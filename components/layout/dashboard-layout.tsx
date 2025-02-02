@@ -85,16 +85,29 @@ export default function DashboardLayout({
   const { theme } = useTheme()
 
   return (
-    <div className="min-h-screen bg-[hsl(var(--theme-bg))]">
+    <div className="min-h-screen bg-[hsl(var(--theme-bg))] overflow-x-hidden">
+      {/* Backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+      
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-50 h-screen border-r backdrop-blur-xl transition-all duration-300",
+          "fixed left-0 top-0 z-50 h-[100dvh] border-r backdrop-blur-xl transition-all duration-300",
           "border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-bg))]/95",
-          isOpen ? "w-64" : "w-[68px]"
+          isOpen ? "w-[280px]" : "w-[68px]",
+          "lg:translate-x-0",
+          !isOpen && "lg:w-[68px]",
+          !isOpen && "w-[280px]",
+          "translate-x-[-100%]",
+          isOpen && "translate-x-0"
         )}
       >
-        <div className="flex h-full flex-col">
+        <div className="flex h-full flex-col overflow-hidden">
           {/* Logo */}
           <div className="flex h-16 items-center border-b border-[hsl(var(--theme-border))] px-4">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[hsl(var(--theme-primary))] to-[hsl(var(--theme-secondary))]">
@@ -111,7 +124,7 @@ export default function DashboardLayout({
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 space-y-1 px-3 py-4">
+          <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
             {/* Primary Navigation */}
             <div className="space-y-1">
               {navigation.map((item) => (
@@ -180,7 +193,7 @@ export default function DashboardLayout({
           </nav>
 
           {/* Free Plan */}
-          <div className="border-t border-[hsl(var(--theme-border))] p-4">
+          <div className="border-t border-[hsl(var(--theme-border))] p-4 mt-auto">
             <div
               className={cn(
                 "rounded-lg bg-[hsl(var(--theme-primary))]/5 p-3",
@@ -210,10 +223,10 @@ export default function DashboardLayout({
           <button
             onClick={() => setIsOpen(!isOpen)}
             className={cn(
-              "absolute -right-3 top-12 z-[51] flex items-center justify-center rounded-full transition-all",
+              "absolute md:-right-3 md:top-12 top-6 right-3 z-[51]  flex items-center justify-center rounded-full transition-all",
               "border bg-[hsl(var(--theme-bg))] border-[hsl(var(--theme-border))]",
               "text-[hsl(var(--theme-muted))] hover:text-[hsl(var(--theme-primary))] hover:border-[hsl(var(--theme-primary))]/30",
-              isOpen ? "h-6 w-6" : "h-8 w-8 -right-4"
+              isOpen ? "h-6 w-6" : "h-8 w-8 md:-right-4 -right-12 top-4"
             )}
           >
             {isOpen ? (
@@ -229,11 +242,13 @@ export default function DashboardLayout({
       <div
         className={cn(
           "transition-all duration-300",
-          isOpen ? "pl-64" : "pl-[68px]"
+          "pl-0",
+          "lg:pl-[280px]",
+          !isOpen && "lg:pl-[68px]"
         )}
       >
         <Header isOpen={isOpen} setIsOpen={setIsOpen} />
-        <main className="min-h-[calc(100vh-4rem)]">
+        <main className="min-h-[calc(100vh-4rem)] px-4">
           {children}
         </main>
       </div>

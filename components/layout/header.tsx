@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
-import { Sun, Moon, Wallet, Plus, Bell, Coins, Wallet2, LogOut } from "lucide-react"
+import { Sun, Moon, Wallet, Plus, Bell, Coins, Wallet2, LogOut, Menu } from "lucide-react"
 import { useWallet } from "@/lib/use-wallet"
 
 interface HeaderProps {
@@ -23,10 +23,12 @@ export function Header({
 
   return (
     <header className="sticky top-0 z-30 w-full border-b border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-bg))]/95 backdrop-blur-xl">
-      <div className="flex h-16 items-center justify-between px-4">
-        <div className="flex items-center gap-4">
+      <div className="flex h-16 items-center justify-between px-4 max-w-full overflow-x-hidden">
+        <div className="flex items-center gap-4 min-w-0">
+          {/* Mobile Menu Button */}
+
           {/* Credits */}
-          <div className="relative">
+          <div className="relative hidden sm:block">
             {/* Gradient Border */}
             <div className="absolute -inset-[1px] rounded-lg bg-gradient-to-r from-[hsl(var(--theme-primary))] via-[hsl(var(--theme-secondary))] to-[hsl(var(--theme-primary))] animate-gradient-x" />
             
@@ -55,7 +57,7 @@ export function Header({
           <Button
             variant="ghost"
             size="icon"
-            className="relative rounded-lg hover:bg-[hsl(var(--theme-primary))]/5"
+            className="relative rounded-lg hover:bg-[hsl(var(--theme-primary))]/5 hidden sm:inline-flex"
           >
             <Bell className="h-4 w-4" />
             <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[hsl(var(--theme-primary))] text-[10px] font-medium text-[hsl(var(--theme-bg))]">
@@ -80,10 +82,10 @@ export function Header({
               <Button
                 variant="outline"
                 size="sm"
-                className="border-[hsl(var(--theme-primary))]/20 text-[hsl(var(--theme-primary))]"
+                className="border-[hsl(var(--theme-primary))]/20 text-[hsl(var(--theme-primary))] truncate max-w-[140px] sm:max-w-none"
               >
-                <Wallet2 className="mr-2 h-4 w-4" />
-                {shortenAddress}
+                <Wallet2 className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">{shortenAddress}</span>
               </Button>
               <Button
                 variant="ghost"
@@ -100,7 +102,7 @@ export function Header({
               className="bg-gradient-to-r from-[hsl(var(--theme-primary))] to-[hsl(var(--theme-secondary))] text-[hsl(var(--theme-bg))] hover:opacity-90"
               size="sm"
             >
-              <Wallet2 className="mr-2 h-4 w-4" />
+              <Wallet className="mr-2 h-4 w-4" />
               Connect Wallet
             </Button>
           )}
