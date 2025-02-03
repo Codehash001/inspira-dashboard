@@ -1,6 +1,7 @@
 import { Inter } from 'next/font/google'
 import { ThemeProvider } from "@/components/theme-provider"
 import { WalletProvider } from "@/lib/wallet-provider"
+import { Toaster } from "@/components/ui/toaster"
 import DashboardLayout from "@/components/layout/dashboard-layout"
 import "./globals.css"
 
@@ -21,7 +22,10 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider>
           <WalletProvider>
-            <DashboardLayout>{children}</DashboardLayout>
+            <DashboardLayout>
+              {children}
+              <Toaster />
+            </DashboardLayout>
           </WalletProvider>
         </ThemeProvider>
       </body>

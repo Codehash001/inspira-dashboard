@@ -3,8 +3,13 @@
 import { useState, useEffect } from "react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Sun, Moon, Wallet, Plus, Bell, Coins, Wallet2, LogOut, Menu } from "lucide-react"
 import { useWallet } from "@/lib/use-wallet"
+import { ethers } from 'ethers'
+import InspiraSubscriptionABI from '@/contract-abi/InspiraSubscription.json'
+
+const SUBSCRIPTION_ADDRESS = '0xeb87cF1b3974c647f7D18a879e9EC863b5773337'
 
 interface HeaderProps {
   isOpen: boolean;
@@ -19,37 +24,78 @@ export function Header({
   setIsOpen: (value: boolean) => void
 }) {
   const { theme, setTheme } = useTheme()
-  const { connect, disconnect, isConnected, shortenAddress } = useWallet()
+  const { connect, disconnect, isConnected, shortenAddress, address, signer } = useWallet()
+  const [subscription, setSubscription] = useState<{
+    planType: number;
+    subscribedAt: number;
+    credits: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (signer && address) {
+      fetchSubscriptionDetails();
+    }
+  }, [signer, address]);
+
+  const fetchSubscriptionDetails = async () => {
+    try {
+      const contract = new ethers.Contract(
+        SUBSCRIPTION_ADDRESS,
+        InspiraSubscriptionABI.abi,
+        signer
+      );
+      const sub = await contract.getUserSubscription(address);
+      setSubscription({
+        planType: Number(sub[0]),
+        subscribedAt: Number(sub[1]),
+        credits: Number(sub[2]),
+      });
+    } catch (error) {
+      console.error('Error fetching subscription:', error);
+    }
+  };
+
+  const getPlanName = (planType: number) => {
+    return planType === 0 ? 'Pro Plan' : 'Ultra Plan';
+  };
 
   return (
     <header className="sticky top-0 z-30 w-full border-b border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-bg))]/95 backdrop-blur-xl">
       <div className="flex h-16 items-center justify-between px-4 max-w-full overflow-x-hidden">
         <div className="flex items-center gap-4 min-w-0">
           {/* Mobile Menu Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-lg hover:bg-[hsl(var(--theme-primary))]/5 lg:hidden"
+            onClick={() => setIsOpen(!isOpen)}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
 
           {/* Credits */}
-          <div className="relative hidden sm:block">
-            {/* Gradient Border */}
-            <div className="absolute -inset-[1px] rounded-lg bg-gradient-to-r from-[hsl(var(--theme-primary))] via-[hsl(var(--theme-secondary))] to-[hsl(var(--theme-primary))] animate-gradient-x" />
-            
-            {/* Content */}
-            <div className="relative flex items-center gap-3 px-3 py-2 rounded-lg bg-[hsl(var(--theme-bg))]">
-              <div className="flex items-center gap-2">
-                <Coins className="h-4 w-4 text-[hsl(var(--theme-primary))]" />
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-[hsl(var(--theme-muted))]">Credits:</span>
-                  <span className="text-sm font-medium bg-gradient-to-r from-[hsl(var(--theme-primary))] to-[hsl(var(--theme-secondary))] bg-clip-text text-transparent">1,234</span>
+          {isConnected && subscription && (
+            <div className="relative hidden sm:block">
+              {/* Gradient Border */}
+              <div className="absolute -inset-[1px] rounded-lg bg-gradient-to-r from-[hsl(var(--theme-primary))] via-[hsl(var(--theme-secondary))] to-[hsl(var(--theme-primary))] animate-gradient-x" />
+              
+              {/* Content */}
+              <div className="relative flex items-center gap-3 px-3 py-2 rounded-lg bg-[hsl(var(--theme-bg))]">
+                <div className="flex items-center gap-2">
+                  <Coins className="h-4 w-4 text-[hsl(var(--theme-primary))]" />
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-[hsl(var(--theme-muted))]">Credits:</span>
+                    <span className="text-sm font-medium bg-gradient-to-r from-[hsl(var(--theme-primary))] to-[hsl(var(--theme-secondary))] bg-clip-text text-transparent">
+                      {subscription.credits}
+                    </span>
+                  </div>
                 </div>
+                <Badge variant="secondary" className="ml-2">
+                  {getPlanName(subscription.planType)}
+                </Badge>
               </div>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6 rounded-full hover:bg-[hsl(var(--theme-primary))]/10"
-              >
-                <Plus className="h-3 w-3 text-[hsl(var(--theme-primary))]" />
-              </Button>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3">

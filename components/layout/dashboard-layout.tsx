@@ -206,12 +206,17 @@ export default function DashboardLayout({
                   <div className="text-xs text-[hsl(var(--theme-muted))]">
                     Upgrade to Pro for unlimited access
                   </div>
-                  <Button
+                  <Link
+                    href="/upgrade-plan"
+                    className=""
+                  >
+                                      <Button
                     size="sm"
                     className="w-full bg-gradient-to-r from-[hsl(var(--theme-primary))] to-[hsl(var(--theme-secondary))] text-[hsl(var(--theme-bg))] hover:opacity-90"
                   >
                     Upgrade Plan
                   </Button>
+                  </Link>
                 </div>
               ) : (
                 <Sparkles className="h-5 w-5 text-[hsl(var(--theme-primary))]" />
