@@ -24,6 +24,8 @@ import {
   XAxis,
   YAxis
 } from 'recharts'
+import { useCredits } from "@/hooks/use-credits"
+
 
 const features = [
   {
@@ -63,29 +65,29 @@ const features = [
 const stats = [
   {
     name: "Available Credits",
-    value: "1,234",
-    change: "49%",
+    value: ``,
+    change: "49",
     changeType: "increase",
     icon: Coins
   },
   {
     name: "INSPI Token",
     value: "$0.85",
-    change: "5.2%",
+    change: "5.2",
     changeType: "increase",
     icon: Wallet
   },
   {
     name: "Total Users",
     value: "25k+",
-    change: "12%",
+    change: "12",
     changeType: "increase",
     icon: Users
   },
   {
     name: "Processing Speed",
     value: "0.2s",
-    change: "15%",
+    change: "15",
     changeType: "increase",
     icon: Zap
   }
@@ -102,6 +104,7 @@ const activityData = [
 ]
 
 export default function Home() {
+  const { credits } = useCredits();
   const { theme } = useTheme()
   const isDark = theme === "dark"
 
@@ -192,7 +195,7 @@ export default function Home() {
                 <div>
                   <div className="text-sm font-medium text-[hsl(var(--theme-fg))]">{stat.name}</div>
                   <div className="text-2xl font-semibold tabular-nums text-[hsl(var(--theme-fg))]">
-                    {stat.value}
+                    {stat.name === "Available Credits" ? `${credits.toLocaleString()}` : `${stat.value}`}
                   </div>
                 </div>
               </div>

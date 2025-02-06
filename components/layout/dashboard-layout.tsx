@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
+import Image from "next/image"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -21,7 +22,20 @@ import {
   ChevronRight,
   Sparkles,
   User2,
+  Sparkle,
 } from "lucide-react"
+import { useWallet } from "@/lib/use-wallet"
+import { ethers } from "ethers"
+import InspiraSubscriptionABI from '@/contract-abi/InspiraSubscription.json'
+import { useCredits } from '@/hooks/use-credits';
+
+const SUBSCRIPTION_ADDRESS = process.env.NEXT_PUBLIC_INSPIRA_SUBSCRIPTION_ADDRESS!;
+
+const plans = [
+  { name: "Free Plan", type: 0 },
+  { name: "Pro Plan", type: 1 },
+  { name: "Ultra Plan", type: 2 },
+];
 
 const navigation = [
   {
@@ -75,14 +89,93 @@ const secondaryNavigation = [
   },
 ]
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+interface DashboardLayoutProps {
+  children: React.ReactNode;
+}
+
+export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [isOpen, setIsOpen] = useState(true)
   const pathname = usePathname()
   const { theme } = useTheme()
+  const { address, signer } = useWallet()
+  const { credits, loading } = useCredits();
+  const [subscription, setSubscription] = useState<{
+    planType: number;
+    subscribedAt: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (signer && address) {
+      fetchSubscriptionDetails();
+      setupEventListeners();
+    }
+  }, [signer, address]);
+
+  const setupEventListeners = async () => {
+    try {
+      const contract = new ethers.Contract(
+        SUBSCRIPTION_ADDRESS,
+        InspiraSubscriptionABI.abi,
+        signer
+      );
+
+      // Listen for subscription purchase events
+      contract.on("SubscriptionPurchased", (user, planType, credits, timestamp) => {
+        if (user.toLowerCase() === address?.toLowerCase()) {
+          console.log('Subscription purchased event:', { planType, credits });
+          setSubscription(prev => ({
+            ...prev!,
+            planType: Number(planType),
+          }));
+        }
+      });
+
+      // Listen for unsubscribe events
+      contract.on("SubscriptionUnsubscribed", (user, planType) => {
+        if (user.toLowerCase() === address?.toLowerCase()) {
+          console.log('Subscription unsubscribed event');
+          fetchSubscriptionDetails(); // Fetch full details as plan type changes
+        }
+      });
+
+      // Listen for free plan claims
+      contract.on("FreePlanClaimed", (user, credits, expiresAt) => {
+        if (user.toLowerCase() === address?.toLowerCase()) {
+          console.log('Free plan claimed:', { credits, expiresAt });
+          setSubscription(prev => ({
+            ...prev!,
+            planType: 0, // Free plan
+          }));
+        }
+      });
+
+      // Cleanup function to remove event listeners
+      return () => {
+        contract.removeAllListeners();
+      };
+    } catch (error) {
+      console.error('Error setting up event listeners:', error);
+    }
+  };
+
+  const fetchSubscriptionDetails = async () => {
+    try {
+      const contract = new ethers.Contract(
+        SUBSCRIPTION_ADDRESS,
+        InspiraSubscriptionABI.abi,
+        signer
+      );
+      
+      const sub = await contract.getUserSubscription(address);
+      setSubscription({
+        planType: Number(sub.planType),
+        subscribedAt: Number(sub.subscribedAt),
+      });
+    } catch (error) {
+      console.error('Error fetching subscription:', error);
+      setSubscription(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[hsl(var(--theme-bg))] overflow-x-hidden">
@@ -110,13 +203,22 @@ export default function DashboardLayout({
         <div className="flex h-full flex-col overflow-hidden">
           {/* Logo */}
           <div className="flex h-16 items-center border-b border-[hsl(var(--theme-border))] px-4">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[hsl(var(--theme-primary))] to-[hsl(var(--theme-secondary))]">
-              <span className="text-sm font-bold text-[hsl(var(--theme-bg))]">IN</span>
+            <div className={cn(
+              "flex items-center justify-center rounded-lg overflow-hidden transition-all duration-300",
+              
+            )}>
+              <Image
+                src="/logo.png"
+                alt="Inspira Logo"
+                width={48}
+                height={48}
+                className="object-contain"
+              />
             </div>
             <span
               className={cn(
-                "ml-3 text-xl font-semibold transition-opacity duration-300 text-[hsl(var(--theme-fg))]",
-                !isOpen && "opacity-0"
+                "ml-3 text-xl font-semibold transition-all duration-300 text-[hsl(var(--theme-fg))]",
+                !isOpen && "hidden opacity-0 scale-0"
               )}
             >
               Inspira
@@ -169,13 +271,13 @@ export default function DashboardLayout({
             </div>
 
             {/* Secondary Navigation */}
-            <div className="mt-6 pt-6 border-t border-[hsl(var(--theme-border))]">
+            <div className="mt-6 pt-6 border-t border-[hsl(var(--theme-border))] space-y-1">
               {secondaryNavigation.map((item) => (
                 <Link
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                    "flex items-center gap-3 rounded-lg px-3 py-2  text-sm transition-colors",
                     "hover:bg-[hsl(var(--theme-primary))]/5 hover:text-[hsl(var(--theme-primary))]",
                     pathname === item.href
                       ? "bg-[hsl(var(--theme-primary))]/5 text-[hsl(var(--theme-primary))]"
@@ -194,34 +296,55 @@ export default function DashboardLayout({
 
           {/* Free Plan */}
           <div className="border-t border-[hsl(var(--theme-border))] p-4 mt-auto">
-            <div
-              className={cn(
-                "rounded-lg bg-[hsl(var(--theme-primary))]/5 p-3",
-                !isOpen ? "w-10 h-10 mx-auto flex items-center justify-center" : "w-full"
-              )}
-            >
-              {isOpen ? (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-[hsl(var(--theme-fg))]">Free Plan</p>
-                  <div className="text-xs text-[hsl(var(--theme-muted))]">
-                    Upgrade to Pro for unlimited access
-                  </div>
-                  <Link
-                    href="/upgrade-plan"
-                    className=""
-                  >
-                                      <Button
-                    size="sm"
-                    className="w-full bg-gradient-to-r from-[hsl(var(--theme-primary))] to-[hsl(var(--theme-secondary))] text-[hsl(var(--theme-bg))] hover:opacity-90"
-                  >
-                    Upgrade Plan
-                  </Button>
-                  </Link>
-                </div>
-              ) : (
-                <Sparkles className="h-5 w-5 text-[hsl(var(--theme-primary))]" />
-              )}
-            </div>
+            {isOpen && (
+              <div className="my-1 flex flex-col space-y-1">
+                <p className="text-xs font-medium text-[hsl(var(--theme-fg))]">
+                  {subscription ? plans[subscription.planType].name : 'Loading...'}
+                </p>
+                <p className="text-xs text-[hsl(var(--theme-muted))]">
+                  {loading ? 'Loading...' : `${credits.toLocaleString()} Credits Available`}
+                </p>
+              </div>
+            )}
+            {isOpen ? (
+              <Link
+                href="/upgrade-plan"
+                className="block"
+              >
+                <Button
+                  size="sm"
+                  className={cn(
+                    "w-full",
+                    (!subscription || subscription.planType === 0)
+                      ? "bg-gradient-to-r from-[hsl(var(--theme-primary))] to-[hsl(var(--theme-secondary))] text-[hsl(var(--theme-bg))] hover:opacity-90"
+                      : "border border-[hsl(var(--theme-border))]  hover:opacity-90"
+                  )}
+                >
+                  {(!subscription || subscription.planType === 0) ? 'Upgrade Plan' : 'Manage Plan'}
+                </Button>
+              </Link>
+            )
+          
+          :
+
+          <Link
+                href="/upgrade-plan"
+                className="block"
+              >
+                <Button
+                  size="sm"
+                  className={cn(
+                    "w-full",
+                    (!subscription || subscription.planType === 0)
+                      ? "bg-gradient-to-r from-[hsl(var(--theme-primary))] to-[hsl(var(--theme-secondary))] text-[hsl(var(--theme-bg))] hover:opacity-90"
+                      : "border border-[hsl(var(--theme-border))]  hover:opacity-90"
+                  )}
+                >
+                  <Sparkle className="h-4 w-4 shrink-0" />
+                </Button>
+              </Link>
+          
+          }
           </div>
 
           {/* Collapse Button */}

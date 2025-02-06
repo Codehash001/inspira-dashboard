@@ -13,7 +13,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 174 89% 54%;
+    --primary: 196 75% 45%;
     --primary-foreground: 210 40% 98%;
 
     --secondary: 196 89% 54%;
@@ -38,7 +38,7 @@
     --theme-bg: 210 40% 98%;
     --theme-fg: 222 47% 11%;
     --theme-border: 214 32% 91%;
-    --theme-primary: 174 89% 54%;
+    --theme-primary: 196 75% 45%;
     --theme-secondary: 196 89% 54%;
     --theme-muted: 215 16% 47%;
   }

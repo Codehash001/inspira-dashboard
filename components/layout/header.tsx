@@ -8,13 +8,9 @@ import { Sun, Moon, Wallet, Plus, Bell, Coins, Wallet2, LogOut, Menu } from "luc
 import { useWallet } from "@/lib/use-wallet"
 import { ethers } from 'ethers'
 import InspiraSubscriptionABI from '@/contract-abi/InspiraSubscription.json'
+import { useCredits } from "@/hooks/use-credits"
 
-const SUBSCRIPTION_ADDRESS = '0xeb87cF1b3974c647f7D18a879e9EC863b5773337'
-
-interface HeaderProps {
-  isOpen: boolean;
-  setIsOpen: (value: boolean) => void;
-}
+const SUBSCRIPTION_ADDRESS = process.env.NEXT_PUBLIC_INSPIRA_SUBSCRIPTION_ADDRESS!;
 
 export function Header({
   isOpen,
@@ -24,7 +20,8 @@ export function Header({
   setIsOpen: (value: boolean) => void
 }) {
   const { theme, setTheme } = useTheme()
-  const { connect, disconnect, isConnected, shortenAddress, address, signer } = useWallet()
+  const { connectWallet, disconnectWallet, isConnected, address, signer } = useWallet()
+  const [loading, setLoading] = useState(false);
   const [subscription, setSubscription] = useState<{
     planType: number;
     subscribedAt: number;
@@ -34,8 +31,69 @@ export function Header({
   useEffect(() => {
     if (signer && address) {
       fetchSubscriptionDetails();
+      setupEventListeners();
     }
   }, [signer, address]);
+
+  const setupEventListeners = async () => {
+    try {
+      const contract = new ethers.Contract(
+        SUBSCRIPTION_ADDRESS,
+        InspiraSubscriptionABI.abi,
+        signer
+      );
+
+      // Listen for subscription purchase events
+      contract.on("SubscriptionPurchased", (user, planType, credits, timestamp) => {
+        if (user.toLowerCase() === address?.toLowerCase()) {
+          console.log('Subscription purchased event:', { planType, credits });
+          setSubscription(prev => ({
+            ...prev!,
+            planType: Number(planType),
+            credits: Number(credits),
+          }));
+        }
+      });
+
+      // Listen for additional credits purchase events
+      contract.on("AdditionalCreditsPurchased", (user, credits, paymentToken) => {
+        if (user.toLowerCase() === address?.toLowerCase()) {
+          console.log('Additional credits purchased:', credits.toString());
+          setSubscription(prev => prev ? {
+            ...prev,
+            credits: Number(credits) + prev.credits,
+          } : null);
+        }
+      });
+
+      // Listen for unsubscribe events
+      contract.on("SubscriptionUnsubscribed", (user, planType) => {
+        if (user.toLowerCase() === address?.toLowerCase()) {
+          console.log('Subscription unsubscribed event');
+          fetchSubscriptionDetails(); // Fetch full details as plan type changes
+        }
+      });
+
+      // Listen for free plan claims
+      contract.on("FreePlanClaimed", (user, credits, expiresAt) => {
+        if (user.toLowerCase() === address?.toLowerCase()) {
+          console.log('Free plan claimed:', { credits, expiresAt });
+          setSubscription(prev => ({
+            ...prev!,
+            planType: 0, // Free plan
+            credits: Number(credits),
+          }));
+        }
+      });
+
+      // Cleanup function to remove event listeners
+      return () => {
+        contract.removeAllListeners();
+      };
+    } catch (error) {
+      console.error('Error setting up event listeners:', error);
+    }
+  };
 
   const fetchSubscriptionDetails = async () => {
     try {
@@ -44,20 +102,76 @@ export function Header({
         InspiraSubscriptionABI.abi,
         signer
       );
+      
       const sub = await contract.getUserSubscription(address);
+      console.log('Subscription details:', sub);
+      
       setSubscription({
-        planType: Number(sub[0]),
-        subscribedAt: Number(sub[1]),
-        credits: Number(sub[2]),
+        planType: Number(sub.planType),
+        subscribedAt: Number(sub.subscribedAt),
+        credits: Number(sub.credits),
       });
     } catch (error) {
       console.error('Error fetching subscription:', error);
+      setSubscription(null);
     }
   };
 
   const getPlanName = (planType: number) => {
-    return planType === 0 ? 'Pro Plan' : 'Ultra Plan';
+    switch(planType) {
+      case 0:
+        return 'Free Plan';
+      case 1:
+        return 'Pro Plan';
+      case 2:
+        return 'Ultra Plan';
+      default:
+        return 'Unknown Plan';
+    }
   };
+
+  const shortenAddress = (addr: string) => {
+    if (!addr) return '';
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
+
+  const handleConnect = async () => {
+    try {
+      setLoading(true);
+      console.log('Starting wallet connection...');
+      await connectWallet();
+      console.log('Wallet connected successfully');
+    } catch (error: any) {
+      console.error('Error in handleConnect:', error);
+      if (error.code === 4001) {
+        alert('Please accept the connection request in MetaMask');
+      } else if (error.message?.includes('user rejected')) {
+        alert('Please accept the network switch request in MetaMask');
+      } else {
+        alert('Error connecting wallet. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      setLoading(true);
+      await disconnectWallet();
+    } catch (error) {
+      console.error('Error disconnecting wallet:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  const { credits } = useCredits();
+
+
+
+ 
 
   return (
     <header className="sticky top-0 z-30 w-full border-b border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-bg))]/95 backdrop-blur-xl">
@@ -84,13 +198,14 @@ export function Header({
                 <div className="flex items-center gap-2">
                   <Coins className="h-4 w-4 text-[hsl(var(--theme-primary))]" />
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-[hsl(var(--theme-muted))]">Credits:</span>
-                    <span className="text-sm font-medium bg-gradient-to-r from-[hsl(var(--theme-primary))] to-[hsl(var(--theme-secondary))] bg-clip-text text-transparent">
-                      {subscription.credits}
+                    <span className="font-medium">
+                    {loading ? 'Loading...' : `${credits.toLocaleString()}`}
                     </span>
+                    <span className="text-sm text-[hsl(var(--theme-muted-foreground))]">credits</span>
                   </div>
                 </div>
-                <Badge variant="secondary" className="ml-2">
+                <div className="h-4 w-[1px] bg-[hsl(var(--theme-border))]" />
+                <Badge variant="secondary" className="font-normal">
                   {getPlanName(subscription.planType)}
                 </Badge>
               </div>
@@ -98,58 +213,41 @@ export function Header({
           )}
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Notification */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative rounded-lg hover:bg-[hsl(var(--theme-primary))]/5 hidden sm:inline-flex"
-          >
-            <Bell className="h-4 w-4" />
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[hsl(var(--theme-primary))] text-[10px] font-medium text-[hsl(var(--theme-bg))]">
-              3
-            </span>
-          </Button>
-
+        <div className="flex items-center gap-2">
           {/* Theme Toggle */}
           <Button
             variant="ghost"
             size="icon"
             className="rounded-lg hover:bg-[hsl(var(--theme-primary))]/5"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
           >
-            <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+            {theme === "light" ? (
+              <Sun className="h-5 w-5" />
+            ) : (
+              <Moon className="h-5 w-5" />
+            )}
           </Button>
 
-          {/* Connect Wallet */}
+          {/* Wallet Connect/Disconnect */}
           {isConnected ? (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-[hsl(var(--theme-primary))]/20 text-[hsl(var(--theme-primary))] truncate max-w-[140px] sm:max-w-none"
-              >
-                <Wallet2 className="mr-2 h-4 w-4 shrink-0" />
-                <span className="truncate">{shortenAddress}</span>
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-lg hover:bg-red-500/10 hover:text-red-500"
-                onClick={() => disconnect()}
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </div>
+            <Button
+              variant="ghost"
+              className="rounded-lg hover:bg-[hsl(var(--theme-primary))]/5 border"
+              onClick={handleDisconnect}
+              disabled={loading}
+            >
+              <LogOut className="h-5 w-5 mr-2" />
+              <span className="hidden sm:inline">{shortenAddress(address!)}</span>
+            </Button>
           ) : (
             <Button
-              onClick={() => connect()}
-              className="bg-gradient-to-r from-[hsl(var(--theme-primary))] to-[hsl(var(--theme-secondary))] text-[hsl(var(--theme-bg))] hover:opacity-90"
-              size="sm"
+              variant="default"
+              className="rounded-lg"
+              onClick={handleConnect}
+              disabled={loading}
             >
-              <Wallet className="mr-2 h-4 w-4" />
-              Connect Wallet
+              <Wallet2 className="h-5 w-5 mr-2" />
+              <span className="hidden sm:inline">{loading ? "Connecting..." : "Connect Wallet"}</span>
             </Button>
           )}
         </div>

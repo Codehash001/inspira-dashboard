@@ -1,0 +1,119 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  walletId    String   @id @map("wallet_id")
+  username    String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  plan        String?
+
+  // Relations
+  creditBalances         CreditBalance[]
+  chatHistory           ChatHistory[]
+  imageGenerationHistory ImageGenerationHistory[]
+  videoGenerationHistory VideoGenerationHistory[]
+  bookGradingHistory    BookGradingHistory[]
+  transactions          Transaction[]
+
+  @@map("users")
+}
+
+model CreditBalance {
+  id               Int      @id @default(autoincrement())
+  walletId         String   @map("wallet_id")
+  plan             String
+  allowedCredits   Int      @map("allowed_credits")
+  purchasedDate    DateTime @default(now()) @map("purchased_date")
+  expiredDate      DateTime @map("expired_date")
+  creditUsed       Int      @default(0) @map("credit_used")
+  usedFor         String?  @map("used_for")
+  remainingBalance Int      @map("remaining_balance")
+  user            User     @relation(fields: [walletId], references: [walletId])
+
+  @@map("credit_balances")
+}
+
+model ChatHistory {
+  id             Int      @id @default(autoincrement())
+  walletId       String   @map("wallet_id")
+  sessionId      String   @map("session_id")
+  sessionName    String   @map("session_name")
+  userMessage    String   @map("user_message")
+  botMessage     String   @map("bot_message")
+  conversationId String   @map("conversation_id")
+  creditUsed     Int      @map("credit_used")
+  tokenUsed      Int      @map("token_used")
+  createdAt      DateTime @default(now()) @map("created_at")
+  user           User     @relation(fields: [walletId], references: [walletId])
+
+  @@map("chat_history")
+}
+
+model ImageGenerationHistory {
+  id          Int      @id @default(autoincrement())
+  walletId    String   @map("wallet_id")
+  imageId     String   @unique @map("image_id")
+  imageUrl    String   @map("image_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  creditUsed  Int      @map("credit_used")
+  tokenUsed   Int      @map("token_used")
+  resolution  String
+  user        User     @relation(fields: [walletId], references: [walletId])
+
+  @@map("image_generation_history")
+}
+
+model VideoGenerationHistory {
+  id          Int      @id @default(autoincrement())
+  walletId    String   @map("wallet_id")
+  videoId     String   @unique @map("video_id")
+  videoUrl    String   @map("video_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  creditUsed  Int      @map("credit_used")
+  tokenUsed   Int      @map("token_used")
+  resolution  String
+  user        User     @relation(fields: [walletId], references: [walletId])
+
+  @@map("video_generation_history")
+}
+
+model BookGradingHistory {
+  id           Int      @id @default(autoincrement())
+  walletId     String   @map("wallet_id")
+  bookId       String   @unique @map("book_id")
+  bookCoverUrl String   @map("book_cover_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+  creditUsed   Int      @map("credit_used")
+  tokenUsed    Int      @map("token_used")
+  bookGrade    String   @map("book_grade")
+  user         User     @relation(fields: [walletId], references: [walletId])
+
+  @@map("book_grading_history")
+}
+
+model Transaction {
+  id              Int      @id @default(autoincrement())
+  walletId        String   @map("wallet_id")
+  transactionType String   @map("transaction_type")
+  createdAt       DateTime @default(now()) @map("created_at")
+  transactionHash String   @unique @map("transaction_hash")
+  amount          Int      @default(0) @map("amount")
+  status          String   @default("completed") @map("status")
+  paymentMethod   String   @default("INSPI") @map("payment_method")
+  user            User     @relation(fields: [walletId], references: [walletId])
+  tokenAmount     Int      @default(0) @map("token_amount")
+  tokenPrice      Float    @default(0) @map("token_price")
+  transactionFee  Float    @default(0) @map("transaction_fee")
+  transactionNote String?  @map("transaction_note")
+
+  @@map("transactions")
+}
