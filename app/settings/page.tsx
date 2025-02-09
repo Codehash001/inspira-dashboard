@@ -125,83 +125,93 @@ const SettingsPage = () => {
   }
 
   return (
-    <div className="container mx-auto py-10">
-      <h1 className="text-4xl font-bold mb-8">Settings</h1>
-      
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Profile Settings</CardTitle>
-            <CardDescription>
-              Manage your account settings and preferences
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Username</label>
-              <div className="flex gap-2">
-                <Input
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter your username"
-                  disabled={isLoading}
-                />
-                <Button
-                  onClick={handleUpdateUsername}
-                  disabled={isLoading || !username}
-                >
-                  Update
-                </Button>
-              </div>
+    <div className="h-[calc(100vh-65px)] flex flex-col">
+      <div className="container mx-auto py-8 max-w-7xl flex-1 overflow-hidden flex flex-col">
+        <div className="flex-none">
+          {/* Header */}
+          <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 mb-8">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+              <p className="text-muted-foreground">
+                Manage your account settings and preferences
+              </p>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Wallet Address</label>
-              <div className="text-sm text-muted-foreground break-all">
-                {address}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card className="border-destructive">
-          <CardHeader>
-            <CardTitle className="text-destructive">Danger Zone</CardTitle>
-            <CardDescription>
-              Actions here cannot be undone. Please be certain.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="destructive">Delete Account</Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Are you absolutely sure?</DialogTitle>
-                  <DialogDescription>
-                    This action cannot be undone. This will permanently delete your
-                    account and remove all your data from our servers.
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter>
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-auto min-h-0">
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Profile Settings</CardTitle>
+                <CardDescription>Update your profile information</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label htmlFor="username" className="text-sm font-medium">
+                      Username
+                    </label>
+                    <Input
+                      id="username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="Enter your username"
+                      className="bg-background border-border/40 hover:border-border/80 transition-colors"
+                    />
+                  </div>
                   <Button
-                    variant="outline"
-                    onClick={() => setIsDeleteDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={handleDeleteAccount}
+                    onClick={handleUpdateUsername}
                     disabled={isLoading}
+                    className="w-full sm:w-auto"
                   >
-                    Delete Account
+                    {isLoading ? "Updating..." : "Update Username"}
                   </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </CardContent>
-        </Card>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Danger Zone</CardTitle>
+                <CardDescription>Irreversible account actions</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="destructive">Delete Account</Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Are you sure?</DialogTitle>
+                      <DialogDescription>
+                        This action cannot be undone. This will permanently delete your
+                        account and remove your data from our servers.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsDeleteDialogOpen(false)}
+                        className="border-border/40 hover:border-border/80 transition-colors"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={handleDeleteAccount}
+                        disabled={isLoading}
+                      >
+                        {isLoading ? "Deleting..." : "Delete Account"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
     </div>
   );

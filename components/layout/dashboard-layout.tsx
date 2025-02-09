@@ -28,6 +28,7 @@ import { useWallet } from "@/lib/use-wallet"
 import { ethers } from "ethers"
 import InspiraSubscriptionABI from '@/contract-abi/InspiraSubscription.json'
 import { useCredits } from '@/hooks/use-credits';
+import { formatCredits } from "@/lib/format-credits"
 
 const SUBSCRIPTION_ADDRESS = process.env.NEXT_PUBLIC_INSPIRA_SUBSCRIPTION_ADDRESS!;
 
@@ -60,15 +61,15 @@ const navigation = [
   },
   {
     name: "Video Generation",
-    href: "#",
+    href: "/video-generation",
     icon: Video,
-    comingSoon: true,
+    comingSoon: false,
   },
 ]
 
 const secondaryNavigation = [
   {
-    name: "History",
+    name: "Usage History",
     href: "/history",
     icon: History,
   },
@@ -302,7 +303,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   {subscription ? plans[subscription.planType].name : 'Loading...'}
                 </p>
                 <p className="text-xs text-[hsl(var(--theme-muted))]">
-                  {loading ? 'Loading...' : `${credits.toLocaleString()} Credits Available`}
+                  {loading ? 'Loading...' : `${formatCredits(credits)} Credits Available`}
                 </p>
               </div>
             )}
@@ -369,15 +370,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Content */}
       <div
         className={cn(
-          "transition-all duration-300",
+          "transition-all duration-300 h-screen flex flex-col",
           "pl-0",
           "lg:pl-[280px]",
           !isOpen && "lg:pl-[68px]"
         )}
       >
         <Header isOpen={isOpen} setIsOpen={setIsOpen} />
-        <main className="min-h-[calc(100vh-4rem)] px-4">
-          {children}
+        <main className="flex-1 overflow-auto">
+          <div className="px-4 py-4">
+            {children}
+          </div>
         </main>
       </div>
     </div>

@@ -9,6 +9,7 @@ import { useWallet } from "@/lib/use-wallet"
 import { ethers } from 'ethers'
 import InspiraSubscriptionABI from '@/contract-abi/InspiraSubscription.json'
 import { useCredits } from "@/hooks/use-credits"
+import { formatCredits } from "@/lib/format-credits"
 
 const SUBSCRIPTION_ADDRESS = process.env.NEXT_PUBLIC_INSPIRA_SUBSCRIPTION_ADDRESS!;
 
@@ -199,7 +200,7 @@ export function Header({
                   <Coins className="h-4 w-4 text-[hsl(var(--theme-primary))]" />
                   <div className="flex items-center gap-1.5">
                     <span className="font-medium">
-                    {loading ? 'Loading...' : `${credits.toLocaleString()}`}
+                    {loading ? 'Loading...' : formatCredits(credits)}
                     </span>
                     <span className="text-sm text-[hsl(var(--theme-muted-foreground))]">credits</span>
                   </div>

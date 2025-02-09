@@ -1,244 +1,293 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Loader2, Upload } from "lucide-react"
+import { Loader2, Upload, Clock } from "lucide-react"
 import { useDropzone } from "react-dropzone"
+import { useWallet } from "@/lib/use-wallet"
+import { Badge } from "@/components/ui/badge"
+import { toast } from "@/hooks/use-toast"
+import { formatDistanceToNow } from 'date-fns'
+
+interface BookGradingResult {
+  bookId: string
+  bookName: string
+  authorName: string
+  languageGrade: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'
+  analysis: string
+  creditUsed: number
+  tokenUsed: number
+  createdAt?: string
+}
 
 export default function BookGradingPage() {
+  const { address, isConnected } = useWallet()
   const [file, setFile] = useState<File | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [results, setResults] = useState<any>(null)
+  const [results, setResults] = useState<BookGradingResult | null>(null)
+  const [history, setHistory] = useState<BookGradingResult[]>([])
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  const onDrop = (acceptedFiles: File[]) => {
     if (acceptedFiles[0]) {
       setFile(acceptedFiles[0])
     }
-  }, [])
+  }
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    maxFiles: 1,
+    multiple: false,
     accept: {
-      'application/pdf': ['.pdf']
-    },
-    maxFiles: 1
+      'text/plain': ['.txt'],
+      'application/pdf': ['.pdf'],
+      'application/epub+zip': ['.epub']
+    }
   })
+
+  const fetchHistory = async () => {
+    if (!address) return;
+    
+    setIsLoadingHistory(true);
+    try {
+      const response = await fetch(`/api/book-grading/history?walletId=${address}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch history');
+      }
+      const data = await response.json();
+      setHistory(data);
+    } catch (error) {
+      console.error('Error fetching history:', error);
+      toast({
+        variant: "destructive",
+        description: 'Failed to load grading history'
+      });
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  useEffect(() => {
+    if (address) {
+      fetchHistory();
+    }
+  }, [address]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!file) return
+    if (!file || !address) {
+      toast({
+        variant: "destructive",
+        description: 'Please upload a file and connect your wallet first.'
+      })
+      return
+    }
 
     setIsLoading(true)
     try {
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('book', file)
+      formData.append('walletId', address)
 
-      const response = await fetch('/api/grade-book', {
+      const response = await fetch('/api/book-grading', {
         method: 'POST',
         body: formData,
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        throw new Error('Failed to grade book')
+        throw new Error(data.error || 'Failed to grade book')
       }
 
-      const data = await response.json()
       setResults(data)
+      fetchHistory() // Refresh history after new grade
+      toast({
+        description: 'Book analysis completed successfully!'
+      })
     } catch (error) {
       console.error('Error grading book:', error)
+      const message = error instanceof Error ? error.message : 'Failed to analyze book. Please try again.'
+      toast({
+        variant: "destructive",
+        description: message
+      })
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      {/* Base Background Color */}
-      <div className="fixed inset-0" />
-      
-      {/* Animated Gradient Background */}
-      <div 
-        className="fixed inset-0 pointer-events-none opacity-70"
-        style={{
-          background: `radial-gradient(circle at 50% 50%, 
-            rgba(32, 244, 204, 0.08) 0%, 
-            rgba(0, 24, 49, 0.08) 50%, 
-            transparent 70%
-          )`,
-          filter: 'blur(120px)',
-          transform: 'translate3d(0, 0, 0)',
-          animation: 'moveGradient 30s alternate infinite'
-        }}
-      />
-      <div 
-        className="fixed inset-0 pointer-events-none opacity-70"
-        style={{
-          background: `radial-gradient(circle at 50% 50%, 
-            rgba(32, 196, 244, 0.08) 0%, 
-            rgba(0, 49, 49, 0.08) 50%, 
-            transparent 70%
-          )`,
-          filter: 'blur(120px)',
-          transform: 'translate3d(0, 0, 0)',
-          animation: 'moveGradient2 30s alternate infinite'
-        }}
-      />
-      
-      {/* Grid Pattern */}
-      <div className="fixed inset-0 bg-[url('/grid.svg')] opacity-20" />
+    <div className="h-[calc(100vh-65px)] flex flex-col">
+      <div className="flex-none p-4">
+        <h1 className="text-3xl font-bold tracking-tight">Book Language Grading</h1>
+        <p className="text-muted-foreground mt-2">
+          Upload a book to analyze its language complexity and get a CEFR grade
+        </p>
+      </div>
 
-      <style jsx>{`
-        @keyframes moveGradient {
-          0% {
-            transform: translate3d(-30%, -30%, 0) scale(1.5);
-          }
-          50% {
-            transform: translate3d(0%, 0%, 0) scale(1);
-          }
-          100% {
-            transform: translate3d(30%, 30%, 0) scale(1.5);
-          }
-        }
-        @keyframes moveGradient2 {
-          0% {
-            transform: translate3d(30%, 30%, 0) scale(1.5);
-          }
-          50% {
-            transform: translate3d(0%, 0%, 0) scale(1);
-          }
-          100% {
-            transform: translate3d(-30%, -30%, 0) scale(1.5);
-          }
-        }
-      `}</style>
+      <div className="flex-1 overflow-auto px-4 pb-8">
+        <div className="container max-w-7xl mx-auto space-y-8">
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Upload Book</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div 
+                    {...getRootProps()} 
+                    className={`
+                      border-2 border-dashed rounded-lg p-8 text-center cursor-pointer
+                      transition-colors duration-200 min-h-[200px] flex flex-col items-center justify-center
+                      ${isDragActive ? 'border-primary bg-primary/5' : 'border-gray-300 hover:border-primary'}
+                    `}
+                  >
+                    <input {...getInputProps()} />
+                    <Upload className="w-12 h-12 mb-4 text-gray-400" />
+                    {file ? (
+                      <>
+                        <p className="text-sm font-medium text-primary break-all">{file.name}</p>
+                        <p className="text-xs text-muted-foreground mt-1">Click or drag to replace</p>
+                      </>
+                    ) : isDragActive ? (
+                      <p className="text-sm">Drop the file here ...</p>
+                    ) : (
+                      <>
+                        <p className="text-sm">Drag and drop a book file here, or click to select</p>
+                        <p className="text-xs text-muted-foreground mt-1">Supports PDF, TXT, and EPUB files</p>
+                      </>
+                    )}
+                  </div>
 
-      {/* Header */}
-      <header className="sticky top-0 backdrop-blur-xl z-10 py-6 border-b border-[hsl(var(--theme-fg))]/10">
-        <div className="container mx-auto px-6">
-          <h1 className="text-3xl md:text-4xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-[#20F4CC] to-[#20C4F4]">
-            Book Grading
-          </h1>
-          <p className="text-sm md:text-base text-[hsl(var(--theme-fg))]/60 mb-6">
-            Analyze and grade books according to different leveling standards
-          </p>
-        </div>
-      </header>
-
-      <div className="container max-w-4xl mx-auto py-8 px-4 relative">
-        <Card className="border-0 shadow-lg glass-card">
-          <CardHeader className="text-center pb-6">
-            <CardTitle className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-[#20F4CC] to-[#20C4F4]">
-              Book Grading
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6">
-            <form onSubmit={handleSubmit} className="space-y-8">
-              <div 
-                {...getRootProps()} 
-                className={`
-                  border border-dashed rounded-lg p-6 transition-all duration-200 cursor-pointer
-                  flex flex-col items-center justify-center text-center
-                  hover:border-[#20F4CC] hover:bg-[#20F4CC]/5
-                  ${isDragActive 
-                    ? 'border-[#20F4CC] bg-[#20F4CC]/5' 
-                    : 'border-[hsl(var(--theme-fg))]/20'
-                  }
-                  ${file ? 'bg-[#20F4CC]/5 border-[#20F4CC]' : ''}
-                  glass-card
-                `}
-              >
-                <input {...getInputProps()} />
-                <Upload 
-                  className={`w-8 h-8 mb-3 ${
-                    file ? 'text-[#20F4CC]' : 'text-[hsl(var(--theme-fg))]/50'
-                  }`} 
-                />
-                {file ? (
-                  <>
-                    <p className="text-[#20F4CC] font-medium text-sm">{file.name}</p>
-                    <p className="text-xs text-[hsl(var(--theme-fg))]/50 mt-1">
-                      Click or drag to replace
-                    </p>
-                  </>
-                ) : isDragActive ? (
-                  <p className="font-medium text-sm">Drop your PDF here</p>
-                ) : (
-                  <>
-                    <p className="font-medium text-sm">Drop your PDF here or click to browse</p>
-                    <p className="text-xs text-[hsl(var(--theme-fg))]/50 mt-1">
-                      Support for PDF files only
-                    </p>
-                  </>
-                )}
-              </div>
-
-              <Button
-                type="submit"
-                disabled={!file || isLoading}
-                className="w-full h-10 text-sm font-medium bg-gradient-to-r from-[#20F4CC] to-[#20C4F4] text-white hover:opacity-90 transition-opacity"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Analyzing Book...
-                  </>
-                ) : (
-                  'Grade Book'
-                )}
-              </Button>
-            </form>
+                  <Button 
+                    type="submit" 
+                    className="w-full" 
+                    disabled={!file || isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      'Grade Book'
+                    )}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
 
             {results && (
-              <div className="mt-8 space-y-4">
-                <div className="grid gap-4">
-                  <div className="rounded-lg p-4 bg-[hsl(var(--theme-bg))] border border-[hsl(var(--theme-fg))]/20 glass-card">
-                    <h3 className="text-lg font-medium mb-3">Reading Level Analysis</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <p className="text-sm text-[hsl(var(--theme-fg))]/60">Lexile Score</p>
-                        <p className="text-lg font-medium">{results.grades.lexile.score}</p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-sm text-[hsl(var(--theme-fg))]/60">Grade Level</p>
-                        <p className="text-lg font-medium">{results.grades.readingLevel.grade}</p>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Analysis Results</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="font-medium text-sm text-muted-foreground mb-1">Book Information</h3>
+                      <p className="text-lg font-medium">{results.bookName}</p>
+                      <p className="text-sm text-muted-foreground">by {results.authorName}</p>
+                    </div>
+
+                    <div>
+                      <h3 className="font-medium text-sm text-muted-foreground mb-2">Language Grade</h3>
+                      <Badge variant="secondary" className="text-lg px-3 py-1">
+                        {results.languageGrade}
+                      </Badge>
+                    </div>
+
+                    <div>
+                      <h3 className="font-medium text-sm text-muted-foreground mb-1">Analysis</h3>
+                      <p className="text-sm leading-relaxed">{results.analysis}</p>
+                    </div>
+
+                    <div className="pt-4 border-t">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">Credits Used</p>
+                          <p className="font-medium">{results.creditUsed.toFixed(3)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Tokens Used</p>
+                          <p className="font-medium">{results.tokenUsed.toLocaleString()}</p>
+                        </div>
                       </div>
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
 
-                  <div className="rounded-lg p-4 bg-[hsl(var(--theme-bg))] border border-[hsl(var(--theme-fg))]/20 glass-card">
-                    <h3 className="text-lg font-medium mb-3">Complexity Factors</h3>
-                    <div className="space-y-3">
-                      {Object.entries(results.grades.complexity.factors).map(([key, value]: [string, any]) => (
-                        <div key={key} className="flex justify-between items-center">
-                          <span className="text-sm capitalize">{key}</span>
-                          <div className="w-48 h-2 bg-[hsl(var(--theme-fg))]/10 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-gradient-to-r from-[#20F4CC] to-[#20C4F4]"
-                              style={{ width: `${value * 100}%` }}
-                            />
+          {/* History Section */}
+          <div>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold tracking-tight">Grading History</h2>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={fetchHistory}
+                disabled={isLoadingHistory}
+              >
+                {isLoadingHistory ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    <Clock className="mr-2 h-4 w-4" />
+                    Refresh
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {history.length === 0 ? (
+              <Card>
+                <CardContent className="py-8">
+                  <p className="text-center text-muted-foreground">No grading history found</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {history.map((item) => (
+                  <Card key={item.bookId}>
+                    <CardHeader>
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                          <CardTitle className="line-clamp-1">{item.bookName}</CardTitle>
+                          <p className="text-sm text-muted-foreground">by {item.authorName}</p>
+                        </div>
+                        <Badge variant="secondary">{item.languageGrade}</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <p className="text-sm text-muted-foreground line-clamp-3">{item.analysis}</p>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">Credits</p>
+                            <p className="font-medium">{item.creditUsed.toFixed(3)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Date</p>
+                            <p className="font-medium">
+                              {item.createdAt ? formatDistanceToNow(new Date(item.createdAt), { addSuffix: true }) : 'Unknown'}
+                            </p>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg p-4 bg-[hsl(var(--theme-bg))] border border-[hsl(var(--theme-fg))]/20 glass-card">
-                    <h3 className="text-lg font-medium mb-3">Recommendations</h3>
-                    <ul className="space-y-2">
-                      {results.recommendations.map((rec: string, index: number) => (
-                        <li key={index} className="text-sm flex items-start gap-2">
-                          <span className="w-1.5 h-1.5 mt-1.5 rounded-full bg-[#20F4CC]" />
-                          {rec}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   )

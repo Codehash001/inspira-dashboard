@@ -181,6 +181,18 @@
   }
 }
 
+@keyframes loading {
+  0% {
+    opacity: 0.2;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.2;
+  }
+}
+
 /* Glass Card Effect */
 .glass-card {
   background: rgba(4, 11, 15, 0.75);
@@ -216,6 +228,53 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(26, 217, 163, 0.3);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #20F4CC transparent;
+}
+
+/* Custom Classes */
+.glass-card {
+  @apply bg-white/5 backdrop-blur-xl border border-[hsl(var(--theme-primary))]/20 dark:bg-black/20 dark:border-[hsl(var(--theme-primary))]/20;
+  box-shadow: 0 0 0 1px hsl(var(--theme-primary) / 0.1);
+}
+
+.glass-card:hover {
+  @apply border-[hsl(var(--theme-primary))]/30 dark:border-[hsl(var(--theme-primary))]/30;
+  box-shadow: 0 0 0 1px hsl(var(--theme-primary) / 0.2),
+              0 4px 12px -2px hsl(var(--theme-primary) / 0.1);
+}
+
+/* WalletConnect Modal Styles */
+[class*="wcm-overlay"] {
+  backdrop-filter: blur(8px);
+}
+
+[class*="wcm-modal"] {
+  border: 2px solid transparent !important;
+  background: 
+    linear-gradient(var(--theme-bg), var(--theme-bg)) padding-box,
+    linear-gradient(to right, #00BB7F, #0066FF) border-box !important;
+  border-radius: var(--radius) !important;
+}
+
+/* Hide scrollbar for the main container */
+html {
+  overflow: hidden;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.overflow-auto::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.overflow-auto {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
 }
 
 /* Gradient Text */
@@ -449,35 +508,4 @@
 ::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(to bottom, #20F4CC, #20C4F4);
   opacity: 0.8;
-}
-
-/* Firefox */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #20F4CC transparent;
-}
-
-/* Custom Classes */
-.glass-card {
-  @apply bg-white/5 backdrop-blur-xl border border-[hsl(var(--theme-primary))]/20 dark:bg-black/20 dark:border-[hsl(var(--theme-primary))]/20;
-  box-shadow: 0 0 0 1px hsl(var(--theme-primary) / 0.1);
-}
-
-.glass-card:hover {
-  @apply border-[hsl(var(--theme-primary))]/30 dark:border-[hsl(var(--theme-primary))]/30;
-  box-shadow: 0 0 0 1px hsl(var(--theme-primary) / 0.2),
-              0 4px 12px -2px hsl(var(--theme-primary) / 0.1);
-}
-
-/* WalletConnect Modal Styles */
-[class*="wcm-overlay"] {
-  backdrop-filter: blur(8px);
-}
-
-[class*="wcm-modal"] {
-  border: 2px solid transparent !important;
-  background: 
-    linear-gradient(var(--theme-bg), var(--theme-bg)) padding-box,
-    linear-gradient(to right, #00BB7F, #0066FF) border-box !important;
-  border-radius: var(--radius) !important;
 }

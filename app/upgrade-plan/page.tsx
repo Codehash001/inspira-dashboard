@@ -14,6 +14,7 @@ import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useCredits } from '@/hooks/use-credits';
 import { Check } from "lucide-react";
+import { formatCredits } from "@/lib/format-credits"
 
 const SUBSCRIPTION_ADDRESS = process.env.NEXT_PUBLIC_INSPIRA_SUBSCRIPTION_ADDRESS!;
 const TOKEN_ADDRESS = process.env.NEXT_PUBLIC_INSPI_TOKEN_ADDRESS!;
@@ -446,7 +447,7 @@ export default function UpgradePlan() {
           <div className="flex items-center gap-2">
             <Coins className="h-4 w-4 text-[hsl(var(--theme-primary))]" />
             <span className="text-sm text-[hsl(var(--theme-muted-foreground))]">
-              {creditsLoading ? 'Loading...' : `${credits.toLocaleString()} Credits Available`}
+              {creditsLoading ? 'Loading...' : `${formatCredits(credits)} Credits Available`}
             </span>
           </div>
           <div className="flex items-center gap-2">

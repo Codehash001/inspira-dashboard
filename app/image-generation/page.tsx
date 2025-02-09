@@ -1,75 +1,107 @@
 'use client';
 
-import { useState } from 'react';
-import Image from "next/image";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
+import { useEffect, useState } from 'react';
+import { Wand2, Download, Loader2, Sparkles, ChevronDown } from 'lucide-react';
+import { useWallet } from '@/lib/use-wallet';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Settings2, Loader2, Download } from "lucide-react";
+} from '@/components/ui/select';
+import { toast } from '@/hooks/use-toast';
+import { Cloudinary } from '@cloudinary/url-gen';
+import { format, quality } from '@cloudinary/url-gen/actions/delivery';
+import { scale } from '@cloudinary/url-gen/actions/resize';
+import { AdvancedImage } from '@cloudinary/react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ImageDetailsModal } from '@/components/image-details-modal';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+
+// Initialize Cloudinary
+const cld = new Cloudinary({
+  cloud: {
+    cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
+  }
+});
+
+type DallE3Size = '1024x1024' | '1024x1792';
+type DallE2Size = '256x256' | '512x512' | '1024x1024';
+type Quality = 'standard' | 'hd';
+type ModelType = 'DALL-E-2' | 'DALL-E-3';
+
+const DALLE2_SIZES: DallE2Size[] = ['256x256', '512x512', '1024x1024'];
+const DALLE3_SIZES: DallE3Size[] = ['1024x1024', '1024x1792'];
 
 interface ImageSettings {
-  size: string;
-  style: string;
-  numberOfImages: number;
+  model: ModelType;
+  size: DallE2Size | DallE3Size;
+  quality?: Quality;
+  n?: number;
 }
 
-const defaultSettings: ImageSettings = {
-  size: "1024x1024",
-  style: "vivid",
-  numberOfImages: 1,
+interface GeneratedImage {
+  url: string;
+  publicId: string;
+  size: string;
+  quality?: string;
+  prompt?: string;
+}
+
+interface PreviousImage {
+  imageId: string;
+  imageUrl: string;
+  resolution: string;
+  quality?: string;
+  prompt?: string;
+  createdAt: string;
+  creditUsed: number;
+  tokenUsed: number;
+}
+
+type DisplayImage = GeneratedImage | PreviousImage;
+
+// Helper function to determine image type
+const isPreviousImage = (image: DisplayImage): image is PreviousImage => {
+  return 'imageId' in image;
+};
+
+const getImageUrl = (image: DisplayImage): string => {
+  return isPreviousImage(image) ? image.imageUrl : image.url;
+};
+
+const getImageSize = (image: DisplayImage): string => {
+  return isPreviousImage(image) ? image.resolution : image.size;
+};
+
+const getImagePublicId = (image: DisplayImage): string => {
+  const url = getImageUrl(image);
+  return url.split('/').pop()?.split('.')[0] || '';
 };
 
 export default function GenerateImagePage() {
-  const [prompt, setPrompt] = useState('');
-  const [images, setImages] = useState<string[]>([]);
+  const { address } = useWallet();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [settings, setSettings] = useState<ImageSettings>(defaultSettings);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [prompt, setPrompt] = useState('');
+  const [images, setImages] = useState<GeneratedImage[]>([]);
+  const [previousImages, setPreviousImages] = useState<PreviousImage[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [selectedImage, setSelectedImage] = useState<DisplayImage | null>(null);
+  const [settings, setSettings] = useState<ImageSettings>({
+    model: 'DALL-E-3',
+    size: '1024x1024',
+    quality: 'standard',
+    n: 1,
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch('/api/generate-image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt, ...settings }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setImages(prev => [...prev, data.imageUrl]);
-      } else {
-        setError(data.error || 'An error occurred while generating the image.');
-      }
-    } catch (err) {
-      setError('An error occurred while generating the image.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleExport = async (imageUrl: string) => {
+  const handleDownload = async (imageUrl: string) => {
     try {
       const response = await fetch(imageUrl);
       const blob = await response.blob();
@@ -79,222 +111,478 @@ export default function GenerateImagePage() {
       a.download = `generated-image-${Date.now()}.png`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-    } catch (err) {
-      setError('Failed to export image.');
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading image:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to download image',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Fetch previous images
+  const fetchPreviousImages = async (pageNum: number, append = false) => {
+    if (!address) return;
+
+    try {
+      setLoadingMore(true);
+      const res = await fetch(`/api/images?walletId=${address}&page=${pageNum}&limit=10`);
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error);
+      
+      setPreviousImages(prev => append ? [...prev, ...data.images] : data.images);
+      setHasMore(data.hasMore);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to load previous images',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  useEffect(() => {
+    if (address) {
+      fetchPreviousImages(1);
+    }
+  }, [address]);
+
+  const handleLoadMore = () => {
+    if (!loadingMore && hasMore) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      fetchPreviousImages(nextPage, true);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!prompt || !address) {
+      toast({
+        title: 'Error',
+        description: !address ? 'Please connect your wallet first' : 'Please enter a prompt',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          ...settings,
+          walletId: address,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+
+      // Transform the image data to match the expected format
+      const formattedImages = data.images.map((img: any) => ({
+        url: img.imageUrl || img.url,
+        publicId: img.publicId || (img.imageUrl || img.url).split('/').pop()?.split('.')[0],
+        size: settings.size,
+        quality: settings.quality,
+        prompt: prompt
+      }));
+
+      // Update the generated images immediately
+      setImages(formattedImages);
+
+      // Convert generated images to PreviousImage format and add to previousImages
+      const newPreviousImages = formattedImages.map((img: { publicId: any; url: any; size: any; quality: any; prompt: any; }) => ({
+        imageId: img.publicId,
+        imageUrl: img.url,
+        resolution: img.size,
+        quality: img.quality,
+        prompt: img.prompt,
+        createdAt: new Date().toISOString(),
+        creditUsed: data.creditUsed || 0,
+        tokenUsed: data.tokenUsed || 0
+      }));
+
+      // Update previousImages state with new images at the beginning
+      setPreviousImages(prev => [...newPreviousImages, ...prev]);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to generate image',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      {/* Base Background Color */}
-      <div className="fixed inset-0 " />
-      
-      {/* Animated Gradient Background */}
-      <div 
-        className="fixed inset-0 pointer-events-none opacity-70"
-        style={{
-          background: `radial-gradient(circle at 50% 50%, 
-            rgba(32, 244, 204, 0.08) 0%, 
-            rgba(0, 24, 49, 0.08) 50%, 
-            transparent 70%
-          )`,
-          filter: 'blur(120px)',
-          transform: 'translate3d(0, 0, 0)',
-          animation: 'moveGradient 30s alternate infinite'
-        }}
-      />
-      <div 
-        className="fixed inset-0 pointer-events-none opacity-70"
-        style={{
-          background: `radial-gradient(circle at 50% 50%, 
-            rgba(32, 196, 244, 0.08) 0%, 
-            rgba(0, 49, 49, 0.08) 50%, 
-            transparent 70%
-          )`,
-          filter: 'blur(120px)',
-          transform: 'translate3d(0, 0, 0)',
-          animation: 'moveGradient2 30s alternate infinite'
-        }}
-      />
-      
-      {/* Grid Pattern */}
-      <div className="fixed inset-0 bg-[url('/grid.svg')] opacity-20" />
-
-      <style jsx>{`
-        @keyframes moveGradient {
-          0% {
-            transform: translate3d(-30%, -30%, 0) scale(1.5);
-          }
-          50% {
-            transform: translate3d(0%, 0%, 0) scale(1);
-          }
-          100% {
-            transform: translate3d(30%, 30%, 0) scale(1.5);
-          }
-        }
-        @keyframes moveGradient2 {
-          0% {
-            transform: translate3d(30%, 30%, 0) scale(1.5);
-          }
-          50% {
-            transform: translate3d(0%, 0%, 0) scale(1);
-          }
-          100% {
-            transform: translate3d(-30%, -30%, 0) scale(1.5);
-          }
-        }
-      `}</style>
-
-      {/* Header */}
-      <header className="sticky top-0 backdrop-blur-xl z-10 py-6 border-b border-[hsl(var(--theme-fg))]/10">
-        <div className="container mx-auto px-6">
-          <h1 className="text-3xl md:text-4xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-[#20F4CC] to-[#20C4F4]">
-            AI Image Generation
-          </h1>
-          <p className="text-sm md:text-base text-[hsl(var(--theme-fg))]/60 mb-6">
-            Transform your ideas into stunning visuals with our AI-powered image generator
-          </p>
-          <form onSubmit={handleSubmit} className="flex gap-4 max-w-4xl">
-            <div className="flex-grow relative">
-              <Input
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="A cute children sheltering under the leaves when it rains..."
-                className="w-full h-12 glass-card border-0 text-base pr-12 placeholder:text-[hsl(var(--theme-fg))]/50"
-              />
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button 
-                    type="button"
-                    variant="ghost" 
-                    size="icon"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 hover:bg-[hsl(var(--theme-fg))]/10"
-                  >
-                    <Settings2 className="h-4 w-4 text-[hsl(var(--theme-fg))]" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[425px] glass-card border-[hsl(var(--theme-fg))]/20">
-                  <DialogHeader>
-                    <DialogTitle className="text-[hsl(var(--theme-fg))]">Generation Settings</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-6 py-4">
-                    <div className="space-y-2">
-                      <Label className="text-[hsl(var(--theme-fg))]/70">Image Size</Label>
-                      <Select
-                        value={settings.size}
-                        onValueChange={(value) => setSettings({ ...settings, size: value })}
-                      >
-                        <SelectTrigger className="glass-card border-[hsl(var(--theme-fg))]/20 text-[hsl(var(--theme-fg))]">
-                          <SelectValue placeholder="Select size" />
-                        </SelectTrigger>
-                        <SelectContent className="glass-card border-[hsl(var(--theme-fg))]/20">
-                          <SelectItem value="256x256">Small (256x256)</SelectItem>
-                          <SelectItem value="512x512">Medium (512x512)</SelectItem>
-                          <SelectItem value="1024x1024">Large (1024x1024)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-[hsl(var(--theme-fg))]/70">Style</Label>
-                      <Select
-                        value={settings.style}
-                        onValueChange={(value) => setSettings({ ...settings, style: value })}
-                      >
-                        <SelectTrigger className="glass-card border-[hsl(var(--theme-fg))]/20 text-[hsl(var(--theme-fg))]">
-                          <SelectValue placeholder="Select style" />
-                        </SelectTrigger>
-                        <SelectContent className="glass-card border-[hsl(var(--theme-fg))]/20">
-                          <SelectItem value="vivid">✨ Vivid</SelectItem>
-                          <SelectItem value="natural">🌿 Natural</SelectItem>
-                          <SelectItem value="artistic">🎨 Artistic</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="flex justify-between">
-                        <Label className="text-[hsl(var(--theme-fg))]/70">Number of Images</Label>
-                        <span className="text-sm text-[hsl(var(--theme-fg))]/70">{settings.numberOfImages}</span>
-                      </div>
-                      <Slider
-                        value={[settings.numberOfImages]}
-                        onValueChange={([value]) => setSettings({ ...settings, numberOfImages: value })}
-                        min={1}
-                        max={4}
-                        step={1}
-                        className="[&>span]:bg-[#20F4CC]"
-                      />
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-            <Button 
-              type="submit"
-              className="h-12 px-8 bg-gradient-to-r from-[#20F4CC] to-[#20C4F4] hover:opacity-90 text-black font-medium"
-              disabled={loading}
+    <div className="h-full flex flex-col overflow-y-auto">
+      <div className="container mx-auto py-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Left Column - Form */}
+          <div className="space-y-8">
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-4"
             >
-              {loading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                'Generate'
-              )}
-            </Button>
-          </form>
-        </div>
-      </header>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-primary/50 bg-clip-text text-transparent">
+                Image Generation
+              </h1>
+              <p className="text-muted-foreground text-lg">
+                Transform your ideas into stunning visuals with our AI-powered image generator
+              </p>
+            </motion.div>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-6 py-8">
-        {error && (
-          <div className="mb-8 px-4 py-3 glass-card border border-red-500/20 text-red-400 text-sm rounded-lg">
-            {error}
-          </div>
-        )}
+            <motion.form 
+              onSubmit={handleSubmit} 
+              className="space-y-6 p-6 rounded-xl border bg-card/50 backdrop-blur-sm"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.2 }}
+            >
+              <div className="space-y-4">
+                <div className="grid gap-6 sm:grid-cols-3">
+                  <motion.div 
+                    className="space-y-2"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.3 }}
+                  >
+                    <Label className="text-base">Model</Label>
+                    <Select
+                      value={settings.model}
+                      onValueChange={(value: ModelType) => {
+                        const newSettings: ImageSettings = {
+                          model: value,
+                          size: value === "DALL-E-2" ? "1024x1024" : "1024x1024",
+                          quality: value === "DALL-E-2" ? "standard" : "standard",
+                          n: 1,
+                        };
+                        setSettings(newSettings);
+                      }}
+                    >
+                      <SelectTrigger className="h-12">
+                        <SelectValue placeholder="Select model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="DALL-E-2">DALL-E 2</SelectItem>
+                        <SelectItem value="DALL-E-3">DALL-E 3</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </motion.div>
 
-        {images.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {images.map((imageUrl, index) => {
-              // Determine if this image should span multiple columns
-              const isLarge = index % 3 === 0;
-              return (
-                <div 
-                  key={index}
-                  className={`relative group glass-card rounded-3xl overflow-hidden shadow-lg hover:shadow-[#20F4CC]/20 transition-all duration-300
-                    ${isLarge ? 'col-span-1 md:col-span-2 row-span-2' : ''}`}
+                  <motion.div 
+                    className="space-y-2"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.4 }}
+                  >
+                    <Label className="text-base">Size</Label>
+                    <Select
+                      value={settings.size}
+                      onValueChange={(value: DallE2Size | DallE3Size) => setSettings({ ...settings, size: value })}
+                    >
+                      <SelectTrigger className="h-12">
+                        <SelectValue placeholder="Select size" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(settings.model === "DALL-E-2" ? DALLE2_SIZES : DALLE3_SIZES).map((size) => (
+                          <SelectItem key={size} value={size}>
+                            {size}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </motion.div>
+
+                  {settings.model === "DALL-E-3" && (
+                    <motion.div 
+                      className="space-y-2"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.5 }}
+                    >
+                      <Label className="text-base">Quality</Label>
+                      <Select
+                        value={settings.quality}
+                        onValueChange={(value: Quality) => setSettings({ ...settings, quality: value })}
+                      >
+                        <SelectTrigger className="h-12">
+                          <SelectValue placeholder="Select quality" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="standard">Standard</SelectItem>
+                          <SelectItem value="hd">HD</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </motion.div>
+                  )}
+                </div>
+
+                <motion.div 
+                  className="space-y-2"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.6 }}
                 >
-                  <div className="aspect-square w-full h-full">
-                    <Image
-                      src={imageUrl}
-                      alt={`Generated image ${index + 1}`}
-                      width={800}
-                      height={800}
+                  <Label className="text-base">Prompt</Label>
+                  <div className="relative">
+                    <Textarea
+                      placeholder="Enter your prompt here..."
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
+                      rows={4}
+                      className="resize-none pr-12 bg-background/50 backdrop-blur-sm"
+                    />
+                    <Sparkles className="absolute right-4 top-4 text-primary/40" />
+                  </div>
+                </motion.div>
+              </div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.7 }}
+              >
+                <Button 
+                  type="submit" 
+                  disabled={loading || !prompt || prompt.length === 0} 
+                  className="w-full h-12 text-lg font-medium"
+                >
+                  {loading ? (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="flex items-center space-x-2"
+                    >
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Generating...</span>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="flex items-center space-x-2"
+                    >
+                      <Wand2 className="h-4 w-4" />
+                      <span>Generate</span>
+                    </motion.div>
+                  )}
+                </Button>
+              </motion.div>
+            </motion.form>
+          </div>
+
+          {/* Right Column - Generated Images */}
+          <motion.div 
+            className="space-y-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+          >
+            <h2 className="text-2xl font-semibold">Generated Images</h2>
+            <div className="grid gap-6">
+              <AnimatePresence>
+                {images.map((image, index) => {
+                  const imageUrl = getImageUrl(image);
+                  if (!imageUrl) return null;
+
+                  return (
+                    <motion.div
+                      key={index}
+                      className="relative aspect-square w-full max-w-md rounded-xl overflow-hidden bg-muted/20 group"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ duration: 0.3 }}
+                      whileHover={{ scale: 1.02 }}
+                      onClick={() => setSelectedImage(image)}
+                    >
+                      <img
+                        src={imageUrl}
+                        alt={`Generated ${index + 1}`}
+                        className="w-full h-full object-contain"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-between p-4">
+                        <div className="text-white">
+                          <p className="text-sm font-medium">{getImageSize(image)}</p>
+                          {image.quality && (
+                            <p className="text-xs opacity-75">{image.quality}</p>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="h-8"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownload(imageUrl);
+                          }}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Previous Images Bento Grid */}
+        <motion.div 
+          className="mt-16 space-y-6"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.8 }}
+        >
+          <h2 className="text-2xl font-semibold">Previous Creations</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 auto-rows-[200px]">
+            <AnimatePresence>
+              {previousImages.map((image, index) => {
+                const [width, height] = image.resolution.split('x').map(Number);
+                const isWide = width > height;
+                const isTall = height > width;
+                const isLarge = index % 5 === 0;
+
+                const gridClass = `
+                  ${isLarge ? 'col-span-2 row-span-2' : ''}
+                  ${!isLarge && isWide ? 'col-span-2' : ''}
+                  ${!isLarge && isTall ? 'row-span-2' : ''}
+                `;
+
+                return (
+                  <motion.div
+                    key={image.imageId}
+                    className={`relative group rounded-xl overflow-hidden cursor-pointer bg-muted/20 ${gridClass}`}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{ duration: 0.5 }}
+                    whileHover={{ scale: 1.02 }}
+                    onClick={() => setSelectedImage(image)}
+                  >
+                    <img
+                      src={image.imageUrl}
+                      alt={`Generated ${index + 1}`}
                       className="w-full h-full object-cover"
                     />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-between p-4">
+                      <div className="text-white">
+                        <p className="text-sm font-medium">{image.resolution}</p>
+                        {image.quality && (
+                          <p className="text-xs opacity-75">{image.quality}</p>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+
+          {hasMore && (
+            <div className="flex justify-center pt-8">
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="min-w-[200px]"
+              >
+                {loadingMore ? (
+                  <motion.div
+                    className="flex items-center"
+                    animate={{ scale: [1, 1.1, 1] }}
+                    transition={{ duration: 1, repeat: Infinity }}
+                  >
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Loading...
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    className="flex items-center"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <ChevronDown className="mr-2 h-5 w-5" />
+                    Load More
+                  </motion.div>
+                )}
+              </Button>
+            </div>
+          )}
+        </motion.div>
+      </div>
+
+      {/* Image Modal */}
+      <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
+        <DialogContent className="sm:max-w-[600px] p-0">
+          <DialogHeader className="px-6 pt-6">
+            <DialogTitle className="text-xl font-semibold">Image Details</DialogTitle>
+          </DialogHeader>
+          {selectedImage && (
+            <div className="space-y-4">
+              <div className="relative w-full h-[400px] bg-muted/10">
+                <img
+                  src={getImageUrl(selectedImage)}
+                  alt="Selected image"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <div className="px-6 pb-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-medium">Prompt</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedImage.prompt || 'No prompt available'}
+                    </p>
                   </div>
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-white hover:text-[#20F4CC] hover:bg-white/10"
-                      onClick={() => handleExport(imageUrl)}
-                    >
-                      <Download className="h-6 w-6" />
-                    </Button>
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-medium">Resolution</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {getImageSize(selectedImage)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-medium">Quality</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedImage.quality || 'Standard'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-medium">Created</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {isPreviousImage(selectedImage) ? selectedImage.createdAt : 'Just now'}
+                    </p>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="h-[60vh]  rounded-3xl flex items-center justify-center text-[hsl(var(--theme-fg))]/60">
-            Your generated images will appear here
-          </div>
-        )}
-      </main>
+                <div className="flex justify-end">
+                  <Button
+                    onClick={() => handleDownload(getImageUrl(selectedImage))}
+                    className="flex items-center space-x-2"
+                    variant="secondary"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span>Download Original</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

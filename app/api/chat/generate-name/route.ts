@@ -17,14 +17,17 @@ export async function POST(req: Request) {
     // Filter only user messages
     const userMessages = messages
       .filter((m: { role: string }) => m.role === 'user')
-      .map((m: { content: string }) => m.content)
-      .join('\n');
+      .map((m: { content: string }) => m.content);
+
+    if (userMessages.length < 3) {
+      return new NextResponse('Need at least 3 user messages', { status: 400 });
+    }
 
     // Generate name using AI
     const { text: name } = await generateText({
-      model: openai('gpt-4-turbo'),
-      system: 'Generate a brief, meaningful title (max 50 chars) for this conversation based on the user messages. Only respond with the title, nothing else.',
-      prompt: userMessages,
+      model: openai('gpt-4o-mini'),
+      system: 'Generate a very short, concise title (2-4 words max) for this chat based on the main topic discussed. Use title case. No quotes, periods, or other punctuation. Example good names: AI Basics, Photo Editing Help, Website Design',
+      messages: [{ role: 'user', content: userMessages.join('\n') }],
     });
 
     // Update session name in database

@@ -15,6 +15,7 @@ import {
 import Link from "next/link"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
+import { formatCredits } from "@/lib/format-credits"
 import {
   Area,
   AreaChart,
@@ -195,7 +196,7 @@ export default function Home() {
                 <div>
                   <div className="text-sm font-medium text-[hsl(var(--theme-fg))]">{stat.name}</div>
                   <div className="text-2xl font-semibold tabular-nums text-[hsl(var(--theme-fg))]">
-                    {stat.name === "Available Credits" ? `${credits.toLocaleString()}` : `${stat.value}`}
+                    {stat.name === "Available Credits" ? formatCredits(credits) : `${stat.value}`}
                   </div>
                 </div>
               </div>

@@ -112,116 +112,131 @@ const SupportPage = () => {
   };
 
   return (
-    <div className="container mx-auto py-10 space-y-8">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Help & Support</h1>
-        <p className="text-muted-foreground">
-          Get help with Inspira. We're here to support you.
-        </p>
-      </div>
+    <div className="h-[calc(100vh-65px)] flex flex-col">
+      <div className="container mx-auto py-8 max-w-7xl flex-1 overflow-hidden flex flex-col">
+        <div className="flex-none">
+          {/* Header */}
+          <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 mb-8">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Help & Support</h1>
+              <p className="text-muted-foreground">
+                Get help with your account and find answers to common questions
+              </p>
+            </div>
+          </div>
+        </div>
 
-      {/* Resources Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {resources.map((resource) => (
-          <a
-            key={resource.title}
-            href={resource.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block"
-          >
-            <Card className="h-full hover:shadow-lg transition-shadow">
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-auto min-h-0">
+          <div className="space-y-6">
+            {/* Resources Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {resources.map((resource) => (
+                <a
+                  key={resource.title}
+                  href={resource.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block"
+                >
+                  <Card className="h-full hover:shadow-lg transition-shadow border-border/40 hover:border-border/80">
+                    <CardHeader>
+                      <div className="flex items-center space-x-2">
+                        <resource.icon className="h-5 w-5 text-primary/80" />
+                        <CardTitle className="text-lg">{resource.title}</CardTitle>
+                      </div>
+                      <CardDescription>{resource.description}</CardDescription>
+                    </CardHeader>
+                  </Card>
+                </a>
+              ))}
+            </div>
+
+            {/* FAQ Section */}
+            <Card className="border-border/40">
               <CardHeader>
-                <div className="flex items-center space-x-2">
-                  <resource.icon className="h-5 w-5 text-primary" />
-                  <CardTitle className="text-lg">{resource.title}</CardTitle>
-                </div>
-                <CardDescription>{resource.description}</CardDescription>
+                <CardTitle>Frequently Asked Questions</CardTitle>
+                <CardDescription>
+                  Find answers to common questions about Inspira
+                </CardDescription>
               </CardHeader>
+              <CardContent>
+                <Accordion type="single" collapsible className="w-full">
+                  {faqs.map((faq, index) => (
+                    <AccordionItem key={index} value={`item-${index}`}>
+                      <AccordionTrigger>{faq.question}</AccordionTrigger>
+                      <AccordionContent>{faq.answer}</AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              </CardContent>
             </Card>
-          </a>
-        ))}
+
+            {/* Contact Form */}
+            <Card className="border-border/40">
+              <CardHeader>
+                <CardTitle>Contact Support</CardTitle>
+                <CardDescription>
+                  Can't find what you're looking for? Send us a message.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label htmlFor="name" className="text-sm font-medium">
+                        Name
+                      </label>
+                      <Input
+                        id="name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Your name"
+                        required
+                        disabled={isLoading}
+                        className="bg-background border-border/40 hover:border-border/80 transition-colors"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="email" className="text-sm font-medium">
+                        Email
+                      </label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="Your email"
+                        required
+                        disabled={isLoading}
+                        className="bg-background border-border/40 hover:border-border/80 transition-colors"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="message" className="text-sm font-medium">
+                      Message
+                    </label>
+                    <Textarea
+                      id="message"
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      placeholder="How can we help?"
+                      required
+                      disabled={isLoading}
+                      rows={5}
+                      className="bg-background border-border/40 hover:border-border/80 transition-colors"
+                    />
+                  </div>
+                  <Button type="submit" disabled={isLoading} className="w-full sm:w-auto">
+                    {isLoading ? "Sending..." : "Send Message"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
-
-      {/* FAQ Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Frequently Asked Questions</CardTitle>
-          <CardDescription>
-            Find answers to common questions about Inspira
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Accordion type="single" collapsible className="w-full">
-            {faqs.map((faq, index) => (
-              <AccordionItem key={index} value={`item-${index}`}>
-                <AccordionTrigger>{faq.question}</AccordionTrigger>
-                <AccordionContent>{faq.answer}</AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </CardContent>
-      </Card>
-
-      {/* Contact Form */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Contact Support</CardTitle>
-          <CardDescription>
-            Can't find what you're looking for? Send us a message.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label htmlFor="name" className="text-sm font-medium">
-                  Name
-                </label>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your name"
-                  required
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="email" className="text-sm font-medium">
-                  Email
-                </label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Your email"
-                  required
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="message" className="text-sm font-medium">
-                Message
-              </label>
-              <Textarea
-                id="message"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="How can we help?"
-                required
-                disabled={isLoading}
-                rows={5}
-              />
-            </div>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Sending..." : "Send Message"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
     </div>
   );
 };
