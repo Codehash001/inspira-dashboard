@@ -14,7 +14,8 @@ model User {
   walletId    String   @id @map("wallet_id")
   username    String?
   createdAt   DateTime @default(now()) @map("created_at")
-  plan        String?
+  plan        String?  // free, pro, ultra
+  lastFreeClaim DateTime? @map("last_free_claim")
 
   // Relations
   creditBalances         CreditBalance[]
@@ -22,22 +23,47 @@ model User {
   imageGenerationHistory ImageGenerationHistory[]
   videoGenerationHistory VideoGenerationHistory[]
   bookGradingHistory    BookGradingHistory[]
+  contractAuditHistory  SmartContractAudit[]
   transactions          Transaction[]
 
   @@map("users")
 }
 
+model Transaction {
+  id              Int      @id @default(autoincrement())
+  walletId        String   @map("wallet_id")
+  transactionType String   @map("transaction_type") // subscribe, unsubscribe, buy_credits
+  createdAt       DateTime @default(now()) @map("created_at")
+  transactionHash String?  @map("transaction_hash")
+  status          String   @default("pending") // pending, completed, failed
+  paymentMethod   String   @map("payment_method") // INSPI, USDT
+  paymentAmount   Float    @map("payment_amount")
+  creditsAdded    Float    @map("credits_added")
+  transactionFee  Float    @map("transaction_fee")
+  transactionNote String?  @map("transaction_note")
+  
+  // Relations
+  user            User     @relation(fields: [walletId], references: [walletId])
+  creditBalances  CreditBalance[]
+
+  @@map("transactions")
+}
+
 model CreditBalance {
   id               Int      @id @default(autoincrement())
   walletId         String   @map("wallet_id")
-  plan             String
+  plan             String   // free, pro, ultra
   allowedCredits   Float    @map("allowed_credits")
   purchasedDate    DateTime @default(now()) @map("purchased_date")
   expiredDate      DateTime @map("expired_date")
   creditUsed       Float    @default(0) @map("credit_used")
   usedFor          String?  @map("used_for")
   remainingBalance Float    @map("remaining_balance")
+  
+  // Relations
   user             User     @relation(fields: [walletId], references: [walletId])
+  transaction      Transaction @relation(fields: [transactionId], references: [id])
+  transactionId    Int      @map("transaction_id")
 
   @@map("credit_balances")
 }
@@ -78,14 +104,16 @@ model VideoGenerationHistory {
   id          Int      @id @default(autoincrement())
   walletId    String   @map("wallet_id")
   videoId     String   @unique @map("video_id")
-  videoUrl    String   @map("video_url")
+  videoUrl    String?  @map("video_url")
   createdAt   DateTime @default(now()) @map("created_at")
   creditUsed  Float    @map("credit_used")
   tokenUsed   Int      @map("token_used")
-  resolution  String
+  resolution  String?
   quality     String?  @map("quality")
   prompt      String?  @map("prompt")
   model       String   @default("video-01") @map("model")
+  status      String   @default("pending") @map("status")
+  error       String?  @map("error")
   user        User     @relation(fields: [walletId], references: [walletId])
 
   @@map("video_generation_history")
@@ -96,31 +124,30 @@ model BookGradingHistory {
   walletId     String   @map("wallet_id")
   bookId       String   @unique @map("book_id")
   bookName     String   @map("book_name")
-  authorName   String   @map("author_name")
+  authorName   String?  @map("author_name")
+  bookGrade    String?  @map("book_grade")
   analysis     String   @map("analysis")
   createdAt    DateTime @default(now()) @map("created_at")
   creditUsed   Float    @map("credit_used")
   tokenUsed    Int      @map("token_used")
-  bookGrade    String   @map("book_grade")
   user         User     @relation(fields: [walletId], references: [walletId])
 
   @@map("book_grading_history")
 }
 
-model Transaction {
-  id              Int      @id @default(autoincrement())
-  walletId        String   @map("wallet_id")
-  transactionType String   @map("transaction_type")
-  createdAt       DateTime @default(now()) @map("created_at")
-  transactionHash String   @unique @map("transaction_hash")
-  amount          Int      @default(0) @map("amount")
-  status          String   @default("completed") @map("status")
-  paymentMethod   String   @default("INSPI") @map("payment_method")
-  user            User     @relation(fields: [walletId], references: [walletId])
-  tokenAmount     Int      @default(0) @map("token_amount")
-  tokenPrice      Float    @default(0) @map("token_price")
-  transactionFee  Float    @default(0) @map("transaction_fee")
-  transactionNote String?  @map("transaction_note")
+model SmartContractAudit {
+  id           Int      @id @default(autoincrement())
+  walletId     String   @map("wallet_id")
+  contractId   String   @unique @map("contract_id")
+  contractName String   @map("contract_name")
+  contractCode String   @map("contract_code") @db.Text
+  analysis     String   @map("analysis") @db.Text
+  severity     String?  @map("severity")
+  vulnerabilities Json? @map("vulnerabilities")
+  createdAt    DateTime @default(now()) @map("created_at")
+  creditUsed   Float    @map("credit_used")
+  tokenUsed    Int      @map("token_used")
+  user         User     @relation(fields: [walletId], references: [walletId])
 
-  @@map("transactions")
+  @@map("smart_contract_audit")
 }

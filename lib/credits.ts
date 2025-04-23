@@ -4,8 +4,9 @@ export interface CreditUpdateParams {
   walletId: string;
   creditsToDeduct?: number;
   creditsToAdd?: number;
-  action: 'chat' | 'image' | 'video' | 'subscribe' | 'unsubscribe' | 'claim_free' | 'purchase';
+  action: 'chat' | 'image' | 'video' | 'book' | 'audit' | 'subscribe' | 'unsubscribe' | 'claim_free' | 'purchase' | 'other';
   plan?: string;
+  transactionId?: number;
 }
 
 export async function getUserCredits(walletId: string) {
@@ -31,10 +32,10 @@ export async function getUserCredits(walletId: string) {
   };
 }
 
-export async function updateUserCredits({ walletId, creditsToDeduct, creditsToAdd, action, plan }: CreditUpdateParams) {
+export async function updateUserCredits({ walletId, creditsToDeduct, creditsToAdd, action, plan, transactionId }: CreditUpdateParams) {
   try {
     // If adding credits (subscribe, claim free, purchase)
-    if (creditsToAdd) {
+    if (creditsToAdd && transactionId) {
       await prisma.creditBalance.create({
         data: {
           walletId,
@@ -43,7 +44,8 @@ export async function updateUserCredits({ walletId, creditsToDeduct, creditsToAd
           expiredDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
           remainingBalance: creditsToAdd,
           creditUsed: 0,
-          usedFor: action
+          usedFor: action,
+          transactionId
         }
       });
 
@@ -64,6 +66,24 @@ export async function updateUserCredits({ walletId, creditsToDeduct, creditsToAd
         throw new Error('Insufficient credits');
       }
 
+      // Only create a transaction for subscription-related actions
+      let actualTransactionId = transactionId;
+      if (!actualTransactionId && ['subscribe', 'unsubscribe', 'claim_free', 'purchase'].includes(action)) {
+        const transaction = await prisma.transaction.create({
+          data: {
+            walletId,
+            transactionType: action,
+            status: 'completed',
+            paymentMethod: 'CREDIT',
+            paymentAmount: creditsToDeduct,
+            creditsAdded: 0,
+            transactionFee: 0,
+            transactionNote: `Credit deduction for ${action}`
+          }
+        });
+        actualTransactionId = transaction.id;
+      }
+
       // Deduct from balances starting with earliest expiring
       for (const balance of activeBalances) {
         if (remainingDeduction <= 0) break;
@@ -73,7 +93,9 @@ export async function updateUserCredits({ walletId, creditsToDeduct, creditsToAd
           where: { id: balance.id },
           data: {
             remainingBalance: balance.remainingBalance - deductFromThis,
-            creditUsed: balance.creditUsed + deductFromThis
+            creditUsed: balance.creditUsed + deductFromThis,
+            usedFor: action,
+            transactionId: actualTransactionId
           }
         });
 
@@ -108,25 +130,43 @@ export async function initializeUserCredits(walletId: string) {
   });
 
   if (!existingUser) {
+    // First create the user without credit balances
     await prisma.user.create({
       data: {
         walletId,
+        plan: 'free'
+      }
+    });
+
+    // Then create the transaction
+    const transaction = await prisma.transaction.create({
+      data: {
+        walletId,
+        transactionType: 'initial',
+        transactionHash: `initial_${walletId}`,
+        status: 'completed',
+        paymentMethod: 'INSPI',
+        paymentAmount: 0,
+        creditsAdded: 0,
+        transactionFee: 0,
+        transactionNote: 'Initial user setup'
+      }
+    });
+
+    // Finally create the credit balance
+    await prisma.creditBalance.create({
+      data: {
+        walletId,
         plan: 'free',
-        creditBalances: {
-          create: {
-            plan: 'free',
-            allowedCredits: 0,
-            remainingBalance: 0,
-            creditUsed: 0,
-            expiredDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-            usedFor: 'initial'
-          }
-        }
+        allowedCredits: 0,
+        remainingBalance: 0,
+        creditUsed: 0,
+        expiredDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        usedFor: 'initial',
+        transactionId: transaction.id
       }
     });
   }
-
-  return existingUser;
 }
 
 export async function checkCreditBalance(walletId: string, requiredCredits: number): Promise<boolean> {

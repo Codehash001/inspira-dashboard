@@ -23,14 +23,33 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
+        select: {
+          id: true,
+          videoId: true,
+          videoUrl: true,
+          createdAt: true,
+          status: true,
+          prompt: true,
+          error: true,
+          resolution: true,
+          model: true
+        }
       }),
       prisma.videoGenerationHistory.count({
         where: { walletId },
       }),
     ]);
 
+    // Normalize status values to lowercase and ensure all fields are present
+    const normalizedVideos = videos.map(video => ({
+      ...video,
+      status: video.status?.toLowerCase() || 'unknown',
+      videoUrl: video.videoUrl || null,
+      error: video.error || null
+    }));
+
     return NextResponse.json({
-      videos,
+      videos: normalizedVideos,
       total,
       hasMore: skip + limit < total,
     });

@@ -195,15 +195,15 @@
 
 /* Glass Card Effect */
 .glass-card {
-  background: rgba(4, 11, 15, 0.75);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(26, 217, 163, 0.15);
-  box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
 }
 
 .dark .glass-card {
-  background: rgba(4, 11, 15, 0.75);
-  border: 1px solid rgba(26, 217, 163, 0.15);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .glass-card:hover {

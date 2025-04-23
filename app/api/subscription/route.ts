@@ -1,13 +1,40 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { updateUserCredits, initializeUserCredits } from '@/lib/credits';
+import { initializeUserCredits } from '@/lib/credits';
+import { ethers } from 'ethers';
+
+// Number of block confirmations to wait for
+const REQUIRED_CONFIRMATIONS = 2;
+
+// Valid subscription plans
+const VALID_PLANS = ['free', 'pro', 'ultra'] as const;
+type SubscriptionPlan = typeof VALID_PLANS[number];
+
+async function waitForTransactionConfirmation(transactionHash: string): Promise<boolean> {
+  try {
+    const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_RPC_URL);
+    
+    // Wait for transaction receipt
+    const receipt = await provider.waitForTransaction(transactionHash, REQUIRED_CONFIRMATIONS);
+    
+    // Check if transaction was successful
+    if (receipt && receipt.status === 1) {
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Error waiting for transaction confirmation:', error);
+    return false;
+  }
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     console.log('Received request body:', body);
 
-    const { action, walletId, plan, transactionHash, additionalCredits, credits, paymentToken } = body;
+    const { action, walletId, plan, transactionHash, additionalCredits, credits, paymentToken, paymentAmount } = body;
 
     // Validate required fields based on action
     let missingFields = [];
@@ -22,6 +49,15 @@ export async function POST(req: Request) {
       case 'subscribe':
         if (!plan) missingFields.push('plan');
         if (typeof credits !== 'number') missingFields.push('credits');
+        // Validate plan type
+        if (plan && !VALID_PLANS.includes(plan as SubscriptionPlan)) {
+          return NextResponse.json({ 
+            success: false,
+            error: `Invalid plan type. Must be one of: ${VALID_PLANS.join(', ')}`
+          }, { 
+            status: 400 
+          });
+        }
         break;
       case 'unsubscribe':
         if (typeof body.freeCredits !== 'number') missingFields.push('freeCredits');
@@ -60,109 +96,209 @@ export async function POST(req: Request) {
       });
     }
 
+    // Wait for transaction confirmation
+    console.log(`Waiting for transaction ${transactionHash} confirmation...`);
+    const isConfirmed = await waitForTransactionConfirmation(transactionHash);
+    
+    if (!isConfirmed) {
+      return NextResponse.json({ 
+        success: false,
+        error: 'Transaction failed or not confirmed'
+      }, { 
+        status: 400 
+      });
+    }
+    console.log(`Transaction ${transactionHash} confirmed successfully`);
+
     // Initialize user if not exists
     await initializeUserCredits(walletId);
-
-    // Record the transaction
-    const transaction = await prisma.transaction.create({
-      data: {
-        walletId,
-        transactionType: action,
-        transactionHash,
-        tokenAmount: additionalCredits || credits || body.freeCredits || 0,
-        status: 'completed',
-        paymentMethod: paymentToken || 'INSPI',
-        transactionNote: `${action} - ${plan || 'free'} plan`
-      },
-    });
-
-    let creditUpdateResult;
 
     // Handle different actions
     switch (action) {
       case 'subscribe': {
-        // Update user's plan
+        // Check current user plan
+        const currentUser = await prisma.user.findUnique({
+          where: { walletId }
+        });
+
+        if (!currentUser) {
+          return NextResponse.json({ 
+            success: false,
+            error: 'User not found'
+          }, { 
+            status: 404 
+          });
+        }
+
+        // Ensure user is on free plan before upgrading
+        if (currentUser.plan !== 'free') {
+          return NextResponse.json({ 
+            success: false,
+            error: 'You must be on the free plan to upgrade. Please unsubscribe from your current plan first.'
+          }, { 
+            status: 400 
+          });
+        }
+
+        // First update user's plan
         await prisma.user.update({
           where: { walletId },
           data: { plan }
         });
 
-        // Add subscription credits
-        creditUpdateResult = await updateUserCredits({
-          walletId,
-          creditsToAdd: credits,
-          action: 'subscribe',
-          plan
+        // Then create transaction
+        const transaction = await prisma.transaction.create({
+          data: {
+            walletId,
+            transactionType: action,
+            transactionHash,
+            status: 'completed',
+            paymentMethod: paymentToken || 'INSPI',
+            paymentAmount: paymentAmount,
+            creditsAdded: credits,
+            transactionFee: 0,
+            transactionNote: `Subscribe to ${plan} plan`
+          }
         });
-        break;
+
+        // Finally create credit balance
+        await prisma.creditBalance.create({
+          data: {
+            walletId,
+            plan,
+            allowedCredits: credits,
+            remainingBalance: credits,
+            creditUsed: 0,
+            expiredDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+            usedFor: action,
+            transactionId: transaction.id
+          }
+        });
+
+        return NextResponse.json({ success: true, creditsAdded: credits });
       }
 
       case 'unsubscribe': {
-        // Update user's plan to free
+        // First update user's plan to free
         await prisma.user.update({
           where: { walletId },
           data: { plan: 'free' }
         });
 
-        // Add free plan credits
-        creditUpdateResult = await updateUserCredits({
-          walletId,
-          creditsToAdd: body.freeCredits,
-          action: 'unsubscribe',
-          plan: 'free'
+        // Then create transaction
+        const transaction = await prisma.transaction.create({
+          data: {
+            walletId,
+            transactionType: action,
+            transactionHash,
+            status: 'completed',
+            paymentMethod: 'INSPI',
+            paymentAmount: 0,
+            creditsAdded: 0,
+            transactionFee: 0,
+            transactionNote: 'Unsubscribe and revert to free plan'
+          }
         });
-        break;
+
+        // Finally create credit balance for free credits
+        await prisma.creditBalance.create({
+          data: {
+            walletId,
+            plan: 'free',
+            allowedCredits: body.freeCredits,
+            remainingBalance: body.freeCredits,
+            creditUsed: 0,
+            expiredDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+            usedFor: action,
+            transactionId: transaction.id
+          }
+        });
+
+        return NextResponse.json({ success: true, creditsAdded: body.freeCredits });
       }
 
       case 'claim_free_credits': {
-        creditUpdateResult = await updateUserCredits({
-          walletId,
-          creditsToAdd: body.freeCredits,
-          action: 'claim_free',
-          plan: 'free'
+        // First create transaction
+        const transaction = await prisma.transaction.create({
+          data: {
+            walletId,
+            transactionType: action,
+            transactionHash,
+            status: 'completed',
+            paymentMethod: 'INSPI',
+            paymentAmount: 0,
+            creditsAdded: body.freeCredits,
+            transactionFee: 0,
+            transactionNote: 'Claim free credits'
+          }
         });
-        break;
+
+        // Then create credit balance
+        await prisma.creditBalance.create({
+          data: {
+            walletId,
+            plan: 'free',
+            allowedCredits: body.freeCredits,
+            remainingBalance: body.freeCredits,
+            creditUsed: 0,
+            expiredDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+            usedFor: action,
+            transactionId: transaction.id
+          }
+        });
+
+        // Finally update last free claim timestamp
+        await prisma.user.update({
+          where: { walletId },
+          data: { lastFreeClaim: new Date() }
+        });
+
+        return NextResponse.json({ success: true, creditsAdded: body.freeCredits });
       }
 
       case 'buy_credits': {
-        creditUpdateResult = await updateUserCredits({
-          walletId,
-          creditsToAdd: additionalCredits,
-          action: 'purchase',
-          plan: (await prisma.user.findUnique({ where: { walletId } }))?.plan || 'free'
+        // First create transaction
+        const transaction = await prisma.transaction.create({
+          data: {
+            walletId,
+            transactionType: action,
+            transactionHash,
+            status: 'completed',
+            paymentMethod: paymentToken || 'INSPI',
+            paymentAmount: paymentAmount,
+            creditsAdded: additionalCredits,
+            transactionFee: 0,
+            transactionNote: 'Purchase additional credits'
+          }
         });
-        break;
+
+        // Then create credit balance
+        await prisma.creditBalance.create({
+          data: {
+            walletId,
+            plan: 'free',
+            allowedCredits: additionalCredits,
+            remainingBalance: additionalCredits,
+            creditUsed: 0,
+            expiredDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+            usedFor: action,
+            transactionId: transaction.id
+          }
+        });
+
+        return NextResponse.json({ success: true, creditsAdded: additionalCredits });
       }
 
       default:
         throw new Error(`Invalid action: ${action}`);
     }
-
-    if (!creditUpdateResult?.success) {
-      throw new Error(creditUpdateResult?.error || 'Failed to update credits');
-    }
-
-    return NextResponse.json({ 
-      success: true, 
-      data: {
-        transaction,
-        creditUpdate: creditUpdateResult
-      }
-    });
   } catch (error) {
     console.error('Subscription error:', error);
-    
-    // Handle different types of errors
-    const errorMessage = error instanceof Error ? error.message : 'Internal Server Error';
-    const isValidationError = errorMessage.includes('required') || 
-                            errorMessage.includes('already') ||
-                            errorMessage.includes('not found');
-    
     return NextResponse.json({ 
-      success: false,
-      error: errorMessage
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
     }, { 
-      status: isValidationError ? 400 : 500 
+      status: 500 
     });
   }
 }

@@ -1,6 +1,6 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Download, X } from "lucide-react";
 import { AdvancedImage } from '@cloudinary/react';
 import { Cloudinary } from '@cloudinary/url-gen';
 import { format, quality } from '@cloudinary/url-gen/actions/delivery';
@@ -39,59 +39,82 @@ export function ImageDetailsModal({ open, onOpenChange, image }: ImageDetailsMod
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
-        <div className="space-y-6">
-          <div className="relative aspect-[16/9] rounded-lg overflow-hidden">
-            <AdvancedImage
-              cldImg={img}
-              alt={image.prompt || 'Generated image'}
-              className="w-full h-full object-cover"
-            />
+      <DialogContent className="max-w-6xl max-h-[90vh] p-0 overflow-hidden">
+        <div className="flex flex-col h-full">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b">
+            <h2 className="text-xl font-semibold">Image Details</h2>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onOpenChange(false)}
+              className="h-8 w-8"
+            >
+              <X className="h-4 w-4" />
+            </Button>
           </div>
-          
-          <div className="space-y-4">
-            {image.prompt && (
-              <div>
-                <h3 className="font-semibold text-lg">Prompt</h3>
-                <p className="text-muted-foreground">{image.prompt}</p>
-              </div>
-            )}
+
+          {/* Content - Scrollable */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            {/* Image Container */}
+            <div className="relative rounded-lg overflow-hidden bg-black/5">
+              <AdvancedImage
+                cldImg={img}
+                alt={image.prompt || 'Generated image'}
+                className="w-full h-auto object-contain max-h-[60vh]"
+              />
+            </div>
             
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <h3 className="font-semibold">Resolution</h3>
-                <p className="text-muted-foreground">{image.resolution}</p>
-              </div>
-              
-              {image.quality && (
-                <div>
-                  <h3 className="font-semibold">Quality</h3>
-                  <p className="text-muted-foreground capitalize">{image.quality}</p>
+            {/* Details */}
+            <div className="space-y-6">
+              {/* Prompt */}
+              {image.prompt && (
+                <div className="space-y-2">
+                  <h3 className="text-sm font-medium text-muted-foreground">Prompt</h3>
+                  <p className="text-sm">{image.prompt}</p>
                 </div>
               )}
               
-              <div>
-                <h3 className="font-semibold">Credits Used</h3>
-                <p className="text-muted-foreground">{image.creditUsed}</p>
-              </div>
+              {/* Image Information Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-muted/50 rounded-lg p-4">
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground">Resolution</h3>
+                  <p className="text-sm mt-1">{image.resolution}</p>
+                </div>
+                
+                {image.quality && (
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground">Quality</h3>
+                    <p className="text-sm mt-1 capitalize">{image.quality}</p>
+                  </div>
+                )}
+                
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground">Credits Used</h3>
+                  <p className="text-sm mt-1">{image.creditUsed.toFixed(3)}</p>
+                </div>
 
-              <div>
-                <h3 className="font-semibold">Created</h3>
-                <p className="text-muted-foreground">
-                  {new Date(image.createdAt).toLocaleDateString()}
-                </p>
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground">Created</h3>
+                  <p className="text-sm mt-1">
+                    {new Date(image.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="flex justify-end">
-            <Button
-              onClick={() => window.open(image.imageUrl, '_blank')}
-              className="gap-2"
-            >
-              <Download className="h-4 w-4" />
-              Download Original
-            </Button>
+          {/* Footer */}
+          <div className="p-4 border-t">
+            <div className="flex justify-end">
+              <Button
+                onClick={() => window.open(image.imageUrl, '_blank')}
+                className="gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Download Original
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>

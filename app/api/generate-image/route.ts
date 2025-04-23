@@ -1,26 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { openai } from '@ai-sdk/openai';
 import { experimental_generateImage as generateImage } from 'ai';
-import { prisma } from '@/lib/prisma';
 import { nanoid } from 'nanoid';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
+import { updateUserCredits, getUserCredits, checkCreditBalance } from '@/lib/credits';
+import { prisma } from '@/lib/prisma';
 
 type DallE3Size = '1024x1024' | '1024x1792';
 type DallE2Size = '256x256' | '512x512' | '1024x1024';
-type Quality = 'standard' | 'hd';
+
 type ModelType = 'DALL-E-2' | 'DALL-E-3';
 
-// Base prices from OpenAI (USD)
 const BASE_PRICES = {
   'DALL-E-3': {
-    '1024x1024': {
-      standard: 0.04,
-      hd: 0.08
-    },
-    '1024x1792': {
-      standard: 0.08,
-      hd: 0.12
-    }
+    '1024x1024': 0.04,
+    '1024x1792': 0.08
   },
   'DALL-E-2': {
     '256x256': 0.016,
@@ -29,34 +23,23 @@ const BASE_PRICES = {
   }
 } as const;
 
-// Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// Calculate credits needed for image generation
-// 500 credits = $25 (with 20% profit margin)
-// So, 1 credit = $25/500 = $0.05
-function calculateCredits(model: ModelType, size: DallE2Size | DallE3Size, quality?: Quality): number {
+function calculateCredits(model: ModelType, size: DallE2Size | DallE3Size): number {
   let basePrice;
   if (model === 'DALL-E-2') {
     basePrice = BASE_PRICES[model][size as DallE2Size];
   } else {
-    basePrice = BASE_PRICES[model][size as DallE3Size][quality || 'standard'];
+    basePrice = BASE_PRICES[model][size as DallE3Size];
   }
   
-  // Add 20% profit margin
-  const priceWithMargin = basePrice * 1.2;
-  
-  // Convert to credits (1 credit = $0.05)
-  // If base price is $0.04, with 20% margin it's $0.048
-  // Credits needed = $0.048 / $0.05 = 0.96 credits
-  return Number((priceWithMargin / 0.05).toFixed(2));
+  return Number(((basePrice * 1.2) / 0.05).toFixed(2)); // 20% profit margin, converted to credits
 }
 
-// For image generation, 1 image = 4000 tokens
 function calculateTokens(): number {
   return 4000;
 }
@@ -64,52 +47,32 @@ function calculateTokens(): number {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { prompt, model, size, quality, n = 1, walletId } = body as {
+    const { prompt, model, size, n = 1, walletId } = body as {
       prompt: string;
       model: ModelType;
       size: DallE2Size | DallE3Size;
-      quality?: Quality;
       n?: number;
       walletId: string;
     };
 
     if (!prompt || !model || !size || !walletId) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Calculate credits needed
-    const creditsPerImage = calculateCredits(model, size, quality);
-    const totalCredits = creditsPerImage * (n || 1);
-    const tokenUsed = calculateTokens() * (n || 1);
+    const creditsPerImage = calculateCredits(model, size);
+    const totalCredits = creditsPerImage * n;
+    const tokenUsed = calculateTokens() * n;
 
-    // Check credit balance
-    const creditBalance = await prisma.creditBalance.findFirst({
-      where: {
-        walletId,
-        expiredDate: {
-          gt: new Date(),
-        },
-      },
-      orderBy: {
-        expiredDate: 'asc',
-      },
-    });
-
-    if (!creditBalance || creditBalance.remainingBalance < totalCredits) {
-      return NextResponse.json(
-        { error: 'Insufficient credits' },
-        { status: 400 }
-      );
+    // Check if the user has enough credits
+    const hasEnoughCredits = await checkCreditBalance(walletId, totalCredits);
+    if (!hasEnoughCredits) {
+      return NextResponse.json({ error: 'Insufficient credits' }, { status: 400 });
     }
 
-    // Generate image using the experimental_generateImage method
     const response = await generateImage({
       model: model === 'DALL-E-3' ? openai.image('dall-e-3') : openai.image('dall-e-2'),
       prompt,
-      n: n || 1,
+      n,
       size: size as `${number}x${number}`,
     });
 
@@ -117,29 +80,29 @@ export async function POST(req: NextRequest) {
       throw new Error('Failed to generate image');
     }
 
-    // Upload to Cloudinary and save to database
+    // Upload images to Cloudinary and store in DB
     const results = await Promise.all(
       response.images.map(async (image) => {
         if (!image.base64) throw new Error('No image data received');
 
         try {
-          // Upload to Cloudinary using the SDK
           const uploadResponse = await new Promise<UploadApiResponse>((resolve, reject) => {
             cloudinary.uploader.upload(
               `data:image/png;base64,${image.base64}`,
-              {
-                folder: 'generated_images',
-                resource_type: 'image'
-              },
-              (error, result) => {
-                if (error) reject(error);
-                else resolve(result as UploadApiResponse);
-              }
+              { folder: 'generated_images', resource_type: 'image' },
+              (error, result) => (error ? reject(error) : resolve(result as UploadApiResponse))
             );
           });
 
-          // Save to database
-          const imageGeneration = await prisma.imageGenerationHistory.create({
+          // Deduct credits after successful image generation
+          await updateUserCredits({
+            walletId,
+            creditsToDeduct: creditsPerImage,
+            action: 'image',
+          });
+
+           // Save image generation details to the database
+           const imageGeneration = await prisma.imageGenerationHistory.create({
             data: {
               imageId: nanoid(),
               walletId,
@@ -148,7 +111,7 @@ export async function POST(req: NextRequest) {
               tokenUsed,
               resolution: size,
               prompt,
-              quality: quality || 'standard',
+
             },
           });
 
@@ -163,21 +126,6 @@ export async function POST(req: NextRequest) {
         }
       })
     );
-
-    // Update credit balance
-    await prisma.creditBalance.update({
-      where: {
-        id: creditBalance.id,
-      },
-      data: {
-        creditUsed: {
-          increment: totalCredits,
-        },
-        remainingBalance: {
-          decrement: totalCredits,
-        },
-      },
-    });
 
     return NextResponse.json({
       success: true,

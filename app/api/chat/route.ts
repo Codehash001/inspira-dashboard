@@ -1,6 +1,7 @@
 import { openai } from '@ai-sdk/openai';
 import { streamText, generateText } from 'ai';
 import { prisma } from '@/lib/prisma';
+import { updateUserCredits, getUserCredits, checkCreditBalance } from '@/lib/credits';
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
@@ -37,25 +38,37 @@ function calculateCredits(model: string, totalTokens: number): number {
 }
 
 export async function POST(req: Request) {
-  const json = await req.json();
-  const { messages, isFirstMessage = false, model = 'gpt-4o-mini', sessionId, conversationId } = json;
-  console.log('Chat API called with:', { isFirstMessage, model, sessionId, conversationId, messages });
-  
-  const authHeader = req.headers.get('authorization');
-  const walletId = authHeader?.replace('Bearer ', '');
-
-  if (!walletId) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
   try {
+    const json = await req.json();
+    const { messages, isFirstMessage = false, model = 'gpt-4o-mini', sessionId, conversationId } = json;
+    console.log('Chat API called with:', { isFirstMessage, model, sessionId, conversationId, messages });
+  
+    const authHeader = req.headers.get('authorization');
+    const walletId = authHeader?.replace('Bearer ', '');
+
+    if (!walletId) {
+      return new Response('Unauthorized', { status: 401 });
+    }
+
+    // Check if user has enough credits for chat (estimate based on message length)
+    // A simple estimation: 1 credit per 1000 characters
+    const userMessage = messages[messages.length - 1].content;
+    const estimatedCreditsNeeded = Math.max(0.1, Math.ceil(userMessage.length / 1000) * 0.1);
+    const hasEnoughCredits = await checkCreditBalance(walletId, estimatedCreditsNeeded);
+    
+    if (!hasEnoughCredits) {
+      return new Response(JSON.stringify({ 
+        error: 'Insufficient credits', 
+        requiredCredits: estimatedCreditsNeeded 
+      }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+    }
+
     // Ensure messages is an array and has the correct format
     if (!Array.isArray(messages)) {
       console.error('Invalid messages format:', messages);
       return new Response('Invalid messages format', { status: 400 });
     }
 
-    const userMessage = messages[messages.length - 1].content;
     console.log('Processing user message:', userMessage);
 
     // Get existing session name if it exists
@@ -119,6 +132,7 @@ export async function POST(req: Request) {
       }
     } else {
       // Use streaming for subsequent messages
+      
       console.log('Using model for streaming:', model);
       const result = streamText({
         model: openai(model),
@@ -149,7 +163,6 @@ export async function POST(req: Request) {
               if (creditBalance) {
                 const newCreditUsed = parseFloat((creditBalance.creditUsed + creditsNeeded).toFixed(4));
                 const newRemainingBalance = parseFloat((creditBalance.remainingBalance - creditsNeeded).toFixed(4));
-
                 // Create chat history entry with both messages
                 const savedMessage = await prisma.chatHistory.create({
                   data: {

@@ -4,12 +4,13 @@ import { useState, useEffect } from "react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Sun, Moon, Wallet, Plus, Bell, Coins, Wallet2, LogOut, Menu } from "lucide-react"
+import { Sun, Moon, Wallet, Plus, Bell, Coins, Wallet2, LogOut, Menu, User2 } from "lucide-react"
 import { useWallet } from "@/lib/use-wallet"
 import { ethers } from 'ethers'
 import InspiraSubscriptionABI from '@/contract-abi/InspiraSubscription.json'
 import { useCredits } from "@/hooks/use-credits"
 import { formatCredits } from "@/lib/format-credits"
+import { useUsernameStore } from "@/store/username-store"
 
 const SUBSCRIPTION_ADDRESS = process.env.NEXT_PUBLIC_INSPIRA_SUBSCRIPTION_ADDRESS!;
 
@@ -23,6 +24,8 @@ export function Header({
   const { theme, setTheme } = useTheme()
   const { connectWallet, disconnectWallet, isConnected, address, signer } = useWallet()
   const [loading, setLoading] = useState(false);
+  const { credits, loading: creditsLoading, refetchCredits } = useCredits();
+  const { username, setUsername } = useUsernameStore();
   const [subscription, setSubscription] = useState<{
     planType: number;
     subscribedAt: number;
@@ -33,6 +36,11 @@ export function Header({
     if (signer && address) {
       fetchSubscriptionDetails();
       setupEventListeners();
+      fetchUsername();
+
+      // Poll for username updates
+      const interval = setInterval(fetchUsername, 500); // Check every 500ms for immediate feedback
+      return () => clearInterval(interval);
     }
   }, [signer, address]);
 
@@ -167,9 +175,25 @@ export function Header({
     }
   };
 
+  const fetchUsername = async () => {
+    if (!address) return;
+    
+    try {
+      const response = await fetch(`/api/users/${address}`);
+      const data = await response.json();
+      setUsername(data.username);
+    } catch (error) {
+      console.error('Error fetching username:', error);
+      setUsername(null);
+    }
+  };
 
-  const { credits } = useCredits();
+  useEffect(() => {
+    if (!address) return;
 
+    const interval = setInterval(fetchSubscriptionDetails, 10000); // 1 minute
+    return () => clearInterval(interval);
+  }, [address]);
 
 
  
@@ -200,7 +224,7 @@ export function Header({
                   <Coins className="h-4 w-4 text-[hsl(var(--theme-primary))]" />
                   <div className="flex items-center gap-1.5">
                     <span className="font-medium">
-                    {loading ? 'Loading...' : formatCredits(credits)}
+                    {`${formatCredits(credits)}`}
                     </span>
                     <span className="text-sm text-[hsl(var(--theme-muted-foreground))]">credits</span>
                   </div>
@@ -237,8 +261,12 @@ export function Header({
               onClick={handleDisconnect}
               disabled={loading}
             >
-              <LogOut className="h-5 w-5 mr-2" />
-              <span className="hidden sm:inline">{shortenAddress(address!)}</span>
+              {username ? (
+                <User2 className="h-5 w-5 mr-2" />
+              ) : (
+                <Wallet2 className="h-5 w-5 mr-2" />
+              )}
+              <span className="hidden sm:inline text-[hsl(var(--theme-primary))]">{username || shortenAddress(address!)}</span>
             </Button>
           ) : (
             <Button

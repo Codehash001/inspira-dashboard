@@ -32,7 +32,8 @@ export async function GET(req: Request) {
           } : {})
         },
         orderBy: { createdAt: 'desc' },
-        ...(type ? { skip, take: limit } : {})
+        skip,
+        take: limit
       })
       history = [...history, ...chats.map((chat: any) => ({ ...chat, type: 'chat' }))]
     }
@@ -47,7 +48,8 @@ export async function GET(req: Request) {
           } : {})
         },
         orderBy: { createdAt: 'desc' },
-        ...(type ? { skip, take: limit } : {})
+        skip,
+        take: limit
       })
       history = [...history, ...images.map((img: any) => ({ ...img, type: 'image' }))]
     }
@@ -62,7 +64,8 @@ export async function GET(req: Request) {
           } : {})
         },
         orderBy: { createdAt: 'desc' },
-        ...(type ? { skip, take: limit } : {})
+        skip,
+        take: limit
       })
       history = [...history, ...videos.map((video: any) => ({ ...video, type: 'video' }))]
     }
@@ -77,32 +80,50 @@ export async function GET(req: Request) {
           } : {})
         },
         orderBy: { createdAt: 'desc' },
-        ...(type ? { skip, take: limit } : {})
+        skip,
+        take: limit
       })
       history = [...history, ...books.map((book: any) => ({ ...book, type: 'book' }))]
+    }
+
+    // Get smart contract audit history
+    if (!type || type === 'audit') {
+      const audits = await prisma.smartContractAudit.findMany({
+        where: {
+          walletId,
+          ...(search ? {
+            OR: [
+              { contractName: { contains: search, mode: 'insensitive' } },
+              { contractId: { contains: search, mode: 'insensitive' } },
+              { severity: { contains: search, mode: 'insensitive' } }
+            ]
+          } : {})
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit
+      })
+      history = [...history, ...audits.map((audit: any) => ({ ...audit, type: 'audit' }))]
     }
 
     // Sort all results by createdAt
     history.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 
     // Get total count for pagination
-    if (type) {
-      totalCount = await prisma.$transaction([
-        prisma.chatHistory.count({ where: { walletId } }),
-        prisma.imageGenerationHistory.count({ where: { walletId } }),
-        prisma.videoGenerationHistory.count({ where: { walletId } }),
-        prisma.bookGradingHistory.count({ where: { walletId } })
-      ]).then((counts: any[]) => counts.reduce((a: any, b: any) => a + b, 0))
-    }
+    totalCount = await prisma.$transaction([
+      prisma.chatHistory.count({ where: { walletId } }),
+      prisma.imageGenerationHistory.count({ where: { walletId } }),
+      prisma.videoGenerationHistory.count({ where: { walletId } }),
+      prisma.bookGradingHistory.count({ where: { walletId } }),
+      prisma.smartContractAudit.count({ where: { walletId } })
+    ]).then((counts: any[]) => counts.reduce((a: any, b: any) => a + b, 0))
 
     // If type is specified, apply pagination
-    if (type) {
-      history = history.slice(skip, skip + limit)
-    }
+    // Removed this condition as pagination is now applied for all cases
 
     return NextResponse.json({
       data: history,
-      totalCount: type ? totalCount : history.length,
+      totalCount,
       page,
       limit
     })

@@ -75,49 +75,46 @@ export function useWallet() {
     window.location.reload();
   };
 
-  const switchToHoleskyNetwork = async (provider: ethers.BrowserProvider) => {
-    console.log('Switching to Holešky network...');
-    const chainId = '0x4268'; // 17000 in hex
+  const switchToMainnet = async (provider: ethers.BrowserProvider) => {
+    console.log('Switching to Ethereum mainnet...');
+    const chainId = '0x1'; // 1 in hex for Ethereum mainnet
     
     try {
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId }],
       });
-      console.log('Successfully switched to Holešky');
+      console.log('Successfully switched to Ethereum mainnet');
     } catch (error: any) {
       console.log('Error switching chain:', error);
       if (error.code === 4902) {
-        console.log('Adding Holešky network to MetaMask...');
+        console.log('Adding Ethereum mainnet to MetaMask...');
         await window.ethereum.request({
           method: 'wallet_addEthereumChain',
           params: [
             {
               chainId,
-              chainName: 'Holešky',
+              chainName: 'Ethereum Mainnet',
               nativeCurrency: {
                 name: 'ETH',
                 symbol: 'ETH',
                 decimals: 18,
               },
-              rpcUrls: ['https://ethereum-holesky.publicnode.com'],
-              blockExplorerUrls: ['https://holesky.etherscan.io'],
+              rpcUrls: ['https://eth-mainnet.g.alchemy.com/v2/L5eN8r2m79oOujs39Ra9Rm_W5nLva5pH'],
+              blockExplorerUrls: ['https://etherscan.io'],
             },
           ],
         });
-        console.log('Successfully added Holešky network');
+        console.log('Successfully added Ethereum mainnet');
       } else {
         throw error;
       }
     }
-
-    // Wait a bit for the network switch to complete
-    await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Verify we're on the correct network
     const network = await provider.getNetwork();
-    if (network.chainId !== BigInt(17000)) {
-      throw new Error('Failed to switch to Holešky network');
+    if (network.chainId !== BigInt(1)) {
+      throw new Error('Failed to switch to Ethereum mainnet');
     }
   };
 
@@ -145,9 +142,9 @@ export function useWallet() {
       const network = await provider.getNetwork();
       console.log('Current network:', network);
       
-      if (network.chainId !== BigInt(17000)) {
-        console.log('Wrong network, switching to Holešky...');
-        await switchToHoleskyNetwork(provider);
+      if (network.chainId !== BigInt(1)) {
+        console.log('Wrong network, switching to Ethereum mainnet...');
+        await switchToMainnet(provider);
       }
       
       // Get signer after network switch

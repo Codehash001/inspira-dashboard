@@ -28,33 +28,48 @@ export async function GET(req: Request) {
 
     const walletId = authorization.replace('Bearer ', '');
     
-    // Get unique sessions with their latest message
-    const sessions = await prisma.chatHistory.findMany({
-      where: {
-        walletId,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+    // First get all unique session IDs
+    const uniqueSessions = await prisma.chatHistory.findMany({
+      where: { walletId },
       distinct: ['sessionId'],
       select: {
         sessionId: true,
         sessionName: true,
-        userMessage: true,
-        botMessage: true,
-        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
     });
 
-    // Format the sessions
-    const formattedSessions = sessions.map((session: { sessionId: any; sessionName: any; userMessage: any; botMessage: any; createdAt: { toISOString: () => any; }; }) => ({
-      sessionId: session.sessionId,
-      sessionName: session.sessionName || 'New Chat',
-      lastMessage: session.userMessage || session.botMessage || '',
-      createdAt: session.createdAt.toISOString(),
-    }));
+    // For each session, get its latest message
+    const sessionsWithLatestMessage = await Promise.all(
+      uniqueSessions.map(async (session) => {
+        const latestMessage = await prisma.chatHistory.findFirst({
+          where: {
+            sessionId: session.sessionId,
+            walletId,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          select: {
+            userMessage: true,
+            botMessage: true,
+            createdAt: true,
+            sessionName: true,
+          },
+        });
 
-    return NextResponse.json(formattedSessions);
+        return {
+          sessionId: session.sessionId,
+          sessionName: latestMessage?.sessionName || 'New Chat',
+          lastMessage: latestMessage?.userMessage || latestMessage?.botMessage || '',
+          createdAt: latestMessage?.createdAt.toISOString() || new Date().toISOString(),
+        };
+      })
+    );
+
+    return NextResponse.json(sessionsWithLatestMessage);
   } catch (error) {
     console.error('Error in sessions API:', error);
     return new NextResponse('Internal Error', { status: 500 });

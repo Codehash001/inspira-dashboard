@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -15,16 +15,20 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { toast } from "@/hooks/use-toast";
 import { Mail, MessageCircle, Phone, Globe } from "lucide-react";
+import Footer from "@/components/footer";
+import { useWallet } from "@/lib/use-wallet";
+import { ethers } from "ethers";
+import InspiraSubscriptionABI from '@/contract-abi/InspiraSubscription.json';
+import { cn } from "@/lib/utils";
+
+const SUBSCRIPTION_ADDRESS = process.env.NEXT_PUBLIC_INSPIRA_SUBSCRIPTION_ADDRESS!;
 
 const faqs = [
   {
     question: "What is Inspira?",
     answer:
-      "Inspira is an AI-powered platform that offers various creative services including AI chat, book grading, image generation, and video generation. Our platform is designed to help users leverage artificial intelligence for their creative and professional needs.",
+      "Inspira is a decentralized EduFi platform that merges AI and blockchain to revolutionize learning. It offers AI-driven educational tools, crypto rewards for learning, NFT certifications, and DAO governance, empowering users with accessible, interactive, and financially rewarding education in Web3.",
   },
   {
     question: "How do credits work?",
@@ -58,187 +62,157 @@ const resources = [
     title: "Documentation",
     description: "Detailed guides and API documentation",
     icon: Globe,
-    link: "https://docs.inspira.ai",
+    link: "https://docs.inspirahub.net",
+    requiresSubscription: false,
+    buttonText: "View Docs",
   },
   {
-    title: "Discord Community",
+    title: "Telegram Community",
     description: "Join our community for real-time support",
     icon: MessageCircle,
-    link: "https://discord.gg/inspira",
+    link: "https://t.me/InspiraPortal",
+    requiresSubscription: false,
+    buttonText: "Join Community",
   },
   {
     title: "Email Support",
-    description: "Get help via email",
+    description: "Priority email support",
     icon: Mail,
-    link: "mailto:support@inspira.ai",
+    link: "mailto:support@inspirahub.net",
+    requiresSubscription: true,
+    buttonText: "Send Email",
   },
   {
-    title: "Phone Support",
-    description: "Available during business hours",
+    title: "Direct Support",
+    description: "Subscriptions Only & Available during business hours",
     icon: Phone,
-    link: "tel:+1-800-INSPIRA",
+    link: "https://t.me/LeoLionMane",
+    requiresSubscription: true,
+    buttonText: "Chat Now",
   },
 ];
 
-const SupportPage = () => {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [message, setMessage] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+export default function SupportPage() {
+  const { address } = useWallet();
+  const [hasSubscription, setHasSubscription] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+  useEffect(() => {
+    const checkSubscription = async () => {
+      if (!address) return;
 
-    try {
-      // Here you would typically send the support request to your backend
-      // For now, we'll just show a success message
-      toast({
-        title: "Support request sent",
-        description: "We'll get back to you as soon as possible.",
-      });
-      setName("");
-      setEmail("");
-      setMessage("");
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to send support request. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      try {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const contract = new ethers.Contract(
+          SUBSCRIPTION_ADDRESS,
+          InspiraSubscriptionABI.abi,
+          provider
+        );
+
+        const sub = await contract.getUserSubscription(address);
+        setHasSubscription(Number(sub.planType) > 0);
+      } catch (error) {
+        console.error("Error checking subscription:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkSubscription();
+  }, [address]);
 
   return (
-    <div className="h-[calc(100vh-65px)] flex flex-col">
-      <div className="container mx-auto py-8 max-w-7xl flex-1 overflow-hidden flex flex-col">
-        <div className="flex-none">
-          {/* Header */}
-          <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 mb-8">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Help & Support</h1>
-              <p className="text-muted-foreground">
-                Get help with your account and find answers to common questions
-              </p>
-            </div>
-          </div>
+    <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
+      <div className="text-start space-y-2">
+        <h2 className="text-3xl font-bold tracking-tight">Help & Support</h2>
+        <p className="text-muted-foreground">Get help with any question or concern you may have.</p>
+      </div>
+
+      <div className="space-y-4">
+        {/* Support Resources */}
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {resources.map((resource, index) => (
+            <Card 
+              key={index} 
+              className={cn(
+                "relative overflow-hidden transition-all duration-300 bg-[hsl(var(--theme-bg))] border-[hsl(var(--theme-border))]",
+                "flex flex-col h-full",
+                (!resource.requiresSubscription || hasSubscription) && 
+                "hover:border-[hsl(var(--theme-primary))] hover:shadow-[0_0_15px_rgba(0,255,209,0.1)]"
+              )}
+            >
+              <CardHeader className="pb-4 flex-1">
+                <div className="flex items-center gap-3 min-h-[40px]">
+                  <div className={cn(
+                    "p-3 rounded-xl shrink-0",
+                    "bg-gradient-to-br from-[hsl(var(--theme-primary))] to-[hsl(var(--theme-secondary))] bg-opacity-10",
+                  )}>
+                    <resource.icon className="h-5 w-5 text-black dark:text-white" />
+                  </div>
+                  <CardTitle className="text-lg text-[hsl(var(--theme-fg))]">{resource.title}</CardTitle>
+                </div>
+                <CardDescription className="pt-3 text-[hsl(var(--theme-muted))] min-h-[48px]">
+                  {resource.description}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                {(!resource.requiresSubscription || hasSubscription) ? (
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full transition-all duration-300",
+                      "border-[hsl(var(--theme-border))] text-[hsl(var(--theme-fg))]",
+                      "hover:bg-gradient-to-r hover:from-[hsl(var(--theme-primary))] hover:to-[hsl(var(--theme-secondary))]",
+                      "hover:text-[hsl(var(--theme-bg))] hover:border-transparent"
+                    )}
+                    onClick={() => window.open(resource.link, '_blank')}
+                  >
+                    {resource.buttonText}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="w-full opacity-50 cursor-not-allowed border-[hsl(var(--theme-border))] text-[hsl(var(--theme-muted))]"
+                    disabled
+                  >
+                    Upgrade Subscription for priority support
+                  </Button>
+                )}
+              </CardContent>
+              {resource.requiresSubscription && !hasSubscription && (
+                <div className="absolute inset-0 bg-[hsl(var(--theme-bg))]/95 backdrop-blur-[2px] flex items-center justify-center">
+                  <div className="text-center px-4 py-2 rounded-lg border border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-bg))]/50">
+                    <p className="text-sm font-medium text-[hsl(var(--theme-muted))]">
+                      Available with Pro & Ultra Plans
+                    </p>
+                  </div>
+                </div>
+              )}
+            </Card>
+          ))}
         </div>
 
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-auto min-h-0">
-          <div className="space-y-6">
-            {/* Resources Section */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {resources.map((resource) => (
-                <a
-                  key={resource.title}
-                  href={resource.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block"
-                >
-                  <Card className="h-full hover:shadow-lg transition-shadow border-border/40 hover:border-border/80">
-                    <CardHeader>
-                      <div className="flex items-center space-x-2">
-                        <resource.icon className="h-5 w-5 text-primary/80" />
-                        <CardTitle className="text-lg">{resource.title}</CardTitle>
-                      </div>
-                      <CardDescription>{resource.description}</CardDescription>
-                    </CardHeader>
-                  </Card>
-                </a>
-              ))}
-            </div>
-
-            {/* FAQ Section */}
-            <Card className="border-border/40">
-              <CardHeader>
-                <CardTitle>Frequently Asked Questions</CardTitle>
-                <CardDescription>
-                  Find answers to common questions about Inspira
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Accordion type="single" collapsible className="w-full">
-                  {faqs.map((faq, index) => (
-                    <AccordionItem key={index} value={`item-${index}`}>
-                      <AccordionTrigger>{faq.question}</AccordionTrigger>
-                      <AccordionContent>{faq.answer}</AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
-              </CardContent>
-            </Card>
-
-            {/* Contact Form */}
-            <Card className="border-border/40">
-              <CardHeader>
-                <CardTitle>Contact Support</CardTitle>
-                <CardDescription>
-                  Can't find what you're looking for? Send us a message.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label htmlFor="name" className="text-sm font-medium">
-                        Name
-                      </label>
-                      <Input
-                        id="name"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="Your name"
-                        required
-                        disabled={isLoading}
-                        className="bg-background border-border/40 hover:border-border/80 transition-colors"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label htmlFor="email" className="text-sm font-medium">
-                        Email
-                      </label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="Your email"
-                        required
-                        disabled={isLoading}
-                        className="bg-background border-border/40 hover:border-border/80 transition-colors"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label htmlFor="message" className="text-sm font-medium">
-                      Message
-                    </label>
-                    <Textarea
-                      id="message"
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      placeholder="How can we help?"
-                      required
-                      disabled={isLoading}
-                      rows={5}
-                      className="bg-background border-border/40 hover:border-border/80 transition-colors"
-                    />
-                  </div>
-                  <Button type="submit" disabled={isLoading} className="w-full sm:w-auto">
-                    {isLoading ? "Sending..." : "Send Message"}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
+        {/* FAQ Section */}
+        <div className="space-y-4 pt-4">
+          <div className="text-start space-y-2">
+            <h2 className="text-2xl font-bold tracking-tight">Frequently Asked Questions</h2>
+            <p className="text-muted-foreground">Common questions about Inspira and its features</p>
           </div>
+          <Card className="border-primary/5">
+            <CardContent className="pt-6">
+              <Accordion type="single" collapsible className="w-full">
+                {faqs.map((faq, index) => (
+                  <AccordionItem key={index} value={`item-${index}`}>
+                    <AccordionTrigger className="text-left">{faq.question}</AccordionTrigger>
+                    <AccordionContent className="text-muted-foreground">{faq.answer}</AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </CardContent>
+          </Card>
         </div>
       </div>
+      <Footer />
     </div>
   );
-};
-
-export default SupportPage;
+}
